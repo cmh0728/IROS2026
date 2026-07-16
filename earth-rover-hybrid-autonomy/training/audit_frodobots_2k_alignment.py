@@ -271,8 +271,8 @@ def _nearest_triplet_center(
         if require_same_section and len({sample.timeline_section_id for sample in selected}) != 1:
             continue
         if not all(
-            selected[offset].front_frame_id < selected[offset + 1].front_frame_id
-            and selected[offset].front_timestamp < selected[offset + 1].front_timestamp
+            selected[offset + 1].front_frame_id == selected[offset].front_frame_id + 1
+            and 0.0 < selected[offset + 1].front_timestamp - selected[offset].front_timestamp <= 0.075
             for offset in (0, 1)
         ):
             continue

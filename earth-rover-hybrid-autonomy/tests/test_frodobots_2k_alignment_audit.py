@@ -2,6 +2,7 @@ from training.audit_frodobots_2k_alignment import (
     _action_label_mismatches,
     _audit_monotonicity,
     _group_indices,
+    _nearest_triplet_center,
     _select_action_strips,
     _select_position_strips,
 )
@@ -64,6 +65,19 @@ def test_action_selection_uses_distinct_rides_when_available() -> None:
 
     assert len(specs) == 3
     assert {spec.ride_id for spec in specs} == {"1", "2", "3"}
+
+
+def test_temporal_strip_requires_consecutive_frame_ids_and_timestamps() -> None:
+    samples = (
+        make_sample("1", 0, 1000.00),
+        make_sample("1", 4, 1000.20),
+        make_sample("1", 5, 1000.25),
+        make_sample("1", 6, 1000.30),
+    )
+
+    triplet = _nearest_triplet_center(samples, [0, 1, 2, 3], target_position=1, require_same_section=True)
+
+    assert triplet == (1, 2, 3)
 
 
 def test_monotonicity_reports_reversal_and_hls_boundary() -> None:
