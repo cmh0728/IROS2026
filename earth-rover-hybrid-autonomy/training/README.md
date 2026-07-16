@@ -14,6 +14,14 @@ Build a bounded three-ride manifest without decoding or extracting video frames:
 
 The command writes `manifest.csv` and `alignment_report.json`. The output must remain outside the immutable `output_rides_0` directory and outside Git. Complete this validation before implementing HLS frame decoding or model training.
 
+On the Dell Ubuntu host, run the complete focused verification with no arguments:
+
+```bash
+./scripts/verify_phase1_manifest.sh
+```
+
+The script uses `/home/asl/datasets/output_rides_0`, writes generated files outside Git under `/home/asl/datasets/manifests/`, and verifies that the raw dataset metadata is unchanged.
+
 ## Berkeley-FrodoBots-7K Probe
 
 Do not download the full Berkeley-FrodoBots-7K dataset during initial work. It is too large for local iteration.
