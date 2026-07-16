@@ -40,6 +40,16 @@ Before Phase 3, run the full semantic and edge-case audit on Dell:
 
 The audit builds a read-only manifest for all rides, creates early/middle/late temporal strips from at least five rides, prioritizes HLS-discontinuity rides, visualizes LEFT/RIGHT and available REVERSE samples, and reports transform, batch, monotonicity, and decode-failure details. Its automatic result remains `CONDITIONAL PASS` until `left_strips.jpg` and `right_strips.jpg` are reviewed by a person.
 
+## Phase 3 ResNet18 Tiny Overfit
+
+After Phase 2 passes, run the 200-sample GPU overfit gate on Dell:
+
+```bash
+./scripts/verify_phase3_tiny_overfit.sh
+```
+
+The script selects 40 samples from each action class, caches only those decoded tensors in memory, fine-tunes an ImageNet-pretrained ResNet18, and verifies loss reduction, at least 95% training accuracy, checkpoint reload, deterministic inference, and raw-dataset immutability. The first run may download the torchvision ResNet18 weights. Outputs remain outside Git under `/home/asl/datasets/outputs/frodobots_2k_phase3/tiny_overfit/`.
+
 ## Berkeley-FrodoBots-7K Probe
 
 Do not download the full Berkeley-FrodoBots-7K dataset during initial work. It is too large for local iteration.
