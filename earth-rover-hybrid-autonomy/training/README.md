@@ -50,6 +50,14 @@ After Phase 2 passes, run the 200-sample GPU overfit gate on Dell:
 
 The script selects 40 samples from each action class, caches only those decoded tensors in memory, fine-tunes an ImageNet-pretrained ResNet18, and verifies loss reduction, at least 95% training accuracy, checkpoint reload, deterministic inference, and raw-dataset immutability. The first run may download the torchvision ResNet18 weights. Outputs remain outside Git under `/home/asl/datasets/outputs/frodobots_2k_phase3/tiny_overfit/`.
 
+After the tiny-overfit gate passes, run the bounded 10/2/2 ride-level baseline:
+
+```bash
+./scripts/run_phase3_small_baseline.sh
+```
+
+The run uses at most 250 samples per ride, selects the best checkpoint by validation macro F1, evaluates the held-out test rides once, and writes `held_out_test_predictions.mp4` with ground truth, prediction, confidence, and control overlays. Metrics, the exact ride split, class distributions, and confusion matrices are stored in `small_baseline_report.json` under `/home/asl/datasets/outputs/frodobots_2k_phase3/small_baseline/`.
+
 ## Berkeley-FrodoBots-7K Probe
 
 Do not download the full Berkeley-FrodoBots-7K dataset during initial work. It is too large for local iteration.
