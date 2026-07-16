@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
+
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
 import numpy as np
 import torch
@@ -107,6 +110,7 @@ def main() -> int:
         "device": str(device),
         "cuda_device_name": torch.cuda.get_device_name(0) if device.type == "cuda" else None,
         "torch_version": torch.__version__,
+        "cublas_workspace_config": os.environ["CUBLAS_WORKSPACE_CONFIG"],
         "pretrained": not args.no_pretrained,
         "sample_count": len(selected_indices),
         "sample_manifest_indices": selected_indices,

@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATASET_ROOT="/home/asl/datasets/output_rides_0"
 MANIFEST_PATH="/home/asl/datasets/manifests/frodobots_2k_phase2/full_dataset/manifest.csv"
 OUTPUT_DIR="/home/asl/datasets/outputs/frodobots_2k_phase3/tiny_overfit"
+export CUBLAS_WORKSPACE_CONFIG=":4096:8"
 
 if command -v python3 >/dev/null 2>&1; then
     PYTHON=python3
@@ -79,7 +80,11 @@ if [[ "$before_fingerprint" != "$after_fingerprint" ]]; then
     exit 1
 fi
 if [[ "$training_status" -ne 0 ]]; then
-    echo "ERROR: Tiny-overfit gate failed. Inspect $OUTPUT_DIR/tiny_overfit_report.json" >&2
+    if [[ -f "$OUTPUT_DIR/tiny_overfit_report.json" ]]; then
+        echo "ERROR: Tiny-overfit gate failed. Inspect $OUTPUT_DIR/tiny_overfit_report.json" >&2
+    else
+        echo "ERROR: Tiny-overfit gate stopped before a report was generated." >&2
+    fi
     exit "$training_status"
 fi
 

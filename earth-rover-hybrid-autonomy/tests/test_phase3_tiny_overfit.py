@@ -1,3 +1,5 @@
+import os
+
 import pytest
 import torch
 
@@ -69,3 +71,7 @@ def test_resnet18_uses_requested_action_head() -> None:
 def test_resnet18_rejects_invalid_class_count() -> None:
     with pytest.raises(ValueError, match="num_classes must be positive"):
         build_action_resnet18(num_classes=0, pretrained=False)
+
+
+def test_deterministic_cublas_workspace_is_configured() -> None:
+    assert os.environ["CUBLAS_WORKSPACE_CONFIG"] in {":4096:8", ":16:8"}
