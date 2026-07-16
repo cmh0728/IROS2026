@@ -1,0 +1,29 @@
+version: 1
+ignore_index: 2
+review_required: true
+classes:
+  - id: 0
+    name: NON_TRAVERSABLE
+    color_rgb: [220, 50, 47]
+    contributes_to_loss: true
+    examples: [wall, bench, pole, vehicle, pedestrian, stairs, blocking object]
+    ambiguous_cases: [rover hood mistaken for a vehicle, partially occluded obstacle]
+  - id: 1
+    name: TRAVERSABLE
+    color_rgb: [38, 166, 91]
+    contributes_to_loss: true
+    examples: [clearly flat usable sidewalk, clearly usable pedestrian pavement]
+    ambiguous_cases: [narrow path, curb transition, damaged pavement, public road]
+  - id: 2
+    name: UNKNOWN_OR_IGNORE
+    color_rgb: [245, 190, 48]
+    contributes_to_loss: false
+    examples: [grass, gravel, dirt, curb, shadow, reflection, sky, padding]
+    ambiguous_cases: [road, path, terrain boundary, rover body, camera distortion]
+policies:
+  dynamic_obstacles: NON_TRAVERSABLE
+  rover_body_or_camera_hood: UNKNOWN_OR_IGNORE
+  sky: UNKNOWN_OR_IGNORE
+  out_of_frame_padding: UNKNOWN_OR_IGNORE
+  low_confidence: UNKNOWN_OR_IGNORE
+  public_road: UNKNOWN_OR_IGNORE

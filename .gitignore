@@ -33,6 +33,9 @@ datasets/*
 !logs/.gitkeep
 /datasets_2k/
 /datasets_7k/
+/generated/
+/review_bundles/
+/experiments/
 
 # Generated training artifacts stay on local/NAS storage.
 **/checkpoints/

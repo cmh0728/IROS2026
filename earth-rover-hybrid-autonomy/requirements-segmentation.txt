@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# Optional research-only traversability pseudo-label workflow.
+# tokenizers is a transformers runtime dependency and is resolved transitively.
+transformers==5.4.0
+safetensors==0.7.0

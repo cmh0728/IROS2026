@@ -1,0 +1,65 @@
+version: 1
+checkpoint: nvidia/segformer-b0-finetuned-ade-512-512
+revision: 489d5cd81a0b59fab9b7ea758d3548ebe99677da
+weight_file: model.safetensors
+pretrained_dataset: ADE20K
+confidence_threshold: 0.70
+default_class: UNKNOWN_OR_IGNORE
+post_processing:
+  morphology_enabled: false
+mapping:
+  TRAVERSABLE:
+    - sidewalk
+  NON_TRAVERSABLE:
+    - wall
+    - building
+    - tree
+    - person
+    - door
+    - table
+    - chair
+    - car
+    - fence
+    - rock
+    - railing
+    - box
+    - column
+    - signboard
+    - stairs
+    - stairway
+    - bench
+    - bus
+    - truck
+    - streetlight
+    - pole
+    - van
+    - step
+    - animal
+    - bicycle
+    - sculpture
+    - traffic light
+    - ashcan
+  UNKNOWN_OR_IGNORE:
+    - sky
+    - floor
+    - road
+    - grass
+    - earth
+    - mountain
+    - water
+    - field
+    - sand
+    - path
+    - runway
+    - river
+    - bridge
+    - hill
+    - dirt track
+    - land
+    - hood
+    - pier
+notes:
+  - Public roads remain unknown even when ADE20K predicts road.
+  - Path is unknown because ADE20K does not distinguish flat pavement from dirt or unsafe narrow paths.
+  - Vehicle-like pixels near the image bottom may be the rover hood and require human review.
+  - Unlisted classes and pixels below the confidence threshold remain unknown.

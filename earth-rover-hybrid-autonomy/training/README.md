@@ -58,6 +58,32 @@ After the tiny-overfit gate passes, run the bounded 10/2/2 ride-level baseline:
 
 The run uses at most 250 samples per ride, selects the best checkpoint by validation macro F1, evaluates the held-out test rides once, and writes `held_out_test_predictions.mp4` with ground truth, prediction, confidence, and control overlays. Metrics, the exact ride split, class distributions, and confusion matrices are stored in `small_baseline_report.json` under `/home/asl/datasets/outputs/frodobots_2k_phase3/small_baseline/`.
 
+## Traversability Pseudo-Label Pilot
+
+The action baseline remains unchanged. Traversability pseudo-labeling is a separate research-only workflow using `nvidia/segformer-b0-finetuned-ade-512-512` as an annotation draft, never as verified ground truth or a rover controller.
+
+On Dell, install the optional pinned dependency and preserve its resolver report:
+
+```bash
+./scripts/setup_traversability_pilot.sh
+```
+
+Then build the 40-frame, eight-ride default review bundle:
+
+```bash
+./scripts/run_traversability_pilot.sh
+```
+
+Paths can be overridden with `DATASET_ROOT`, `MANIFEST_PATH`, `BUNDLE_ROOT`, `SAMPLE_COUNT`, `MAX_RIDES`, `MINIMUM_SEPARATION_SECONDS`, and `SEED`. The default bundle is `$HOME/datasets/review_bundles/traversability_pilot_v1/`. Open `gallery.html` on the Mac and edit reviewer columns in `review.csv`. Do not train until the reviewed CSV and any corrected masks pass `training/validate_traversability_review.py` and the user explicitly approves them.
+
+Copy the self-contained bundle by running this on the Mac, replacing both placeholders:
+
+```bash
+rsync -ah --info=progress2 \
+  asl@<DELL_TAILSCALE_IP>:/home/asl/datasets/review_bundles/traversability_pilot_v1/ \
+  <MAC_DESTINATION>/traversability_pilot_v1/
+```
+
 ## Berkeley-FrodoBots-7K Probe
 
 Do not download the full Berkeley-FrodoBots-7K dataset during initial work. It is too large for local iteration.
