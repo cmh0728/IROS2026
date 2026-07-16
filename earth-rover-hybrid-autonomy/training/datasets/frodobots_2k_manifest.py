@@ -119,6 +119,13 @@ def normalize_timestamp(value: object, unit: Literal["seconds", "milliseconds"])
     raise DatasetFormatError(f"unsupported timestamp unit: {unit}")
 
 
+def parse_hls_segment_timestamp(reference: str | Path) -> float:
+    match = SEGMENT_TIMESTAMP_PATTERN.search(Path(reference).name)
+    if match is None:
+        raise DatasetFormatError(f"segment timestamp missing: {reference}")
+    return _parse_segment_timestamp(match.group(1))
+
+
 def load_control_timeline(path: str | Path) -> ControlTimeline:
     path = Path(path)
     parsed_sections: list[list[tuple[float, ControlRecord | None]]] = [[]]
@@ -278,10 +285,10 @@ def parse_front_hls_playlist(
             continue
         if pending_duration is None or not math.isfinite(pending_duration) or pending_duration <= 0:
             raise DatasetFormatError(f"segment without valid EXTINF in {path}: {line}")
-        match = SEGMENT_TIMESTAMP_PATTERN.search(line)
-        if match is None:
-            raise DatasetFormatError(f"segment timestamp missing in {path}: {line}")
-        start = _parse_segment_timestamp(match.group(1))
+        try:
+            start = parse_hls_segment_timestamp(line)
+        except DatasetFormatError as exc:
+            raise DatasetFormatError(f"segment timestamp missing in {path}: {line}") from exc
         if previous_start is not None and start < previous_start:
             raise DatasetFormatError(f"non-monotonic HLS segment timestamps in {path.name}")
         segment_path = path.parent / line

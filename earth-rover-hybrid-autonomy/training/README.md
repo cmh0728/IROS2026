@@ -22,6 +22,16 @@ On the Dell Ubuntu host, run the complete focused verification with no arguments
 
 The script uses `/home/asl/datasets/output_rides_0`, writes generated files outside Git under `/home/asl/datasets/manifests/`, and verifies that the raw dataset metadata is unchanged.
 
+## FrodoBots-2K Phase 2 HLS Verification
+
+On the Dell Ubuntu host, run the lazy HLS loader and visual verification with no arguments:
+
+```bash
+./scripts/verify_phase2_hls_loader.sh
+```
+
+The script runs focused loader tests, decodes 20 deterministic manifest samples, verifies a `4x3x224x224` DataLoader batch, checks repeat access, and writes `aligned_samples.jpg` plus `hls_verification_report.json` under `/home/asl/datasets/outputs/frodobots_2k_phase2/`. Inspect the contact sheet manually before treating image-label alignment as validated.
+
 ## Berkeley-FrodoBots-7K Probe
 
 Do not download the full Berkeley-FrodoBots-7K dataset during initial work. It is too large for local iteration.
