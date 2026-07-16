@@ -32,6 +32,14 @@ On the Dell Ubuntu host, run the lazy HLS loader and visual verification with no
 
 The script runs focused loader tests, decodes 20 deterministic manifest samples, verifies a `4x3x224x224` DataLoader batch, checks repeat access, and writes `aligned_samples.jpg` plus `hls_verification_report.json` under `/home/asl/datasets/outputs/frodobots_2k_phase2/`. Inspect the contact sheet manually before treating image-label alignment as validated.
 
+Before Phase 3, run the full semantic and edge-case audit on Dell:
+
+```bash
+./scripts/audit_phase2_alignment.sh
+```
+
+The audit builds a read-only manifest for all rides, creates early/middle/late temporal strips from at least five rides, prioritizes HLS-discontinuity rides, visualizes LEFT/RIGHT and available REVERSE samples, and reports transform, batch, monotonicity, and decode-failure details. Its automatic result remains `CONDITIONAL PASS` until `left_strips.jpg` and `right_strips.jpg` are reviewed by a person.
+
 ## Berkeley-FrodoBots-7K Probe
 
 Do not download the full Berkeley-FrodoBots-7K dataset during initial work. It is too large for local iteration.

@@ -168,7 +168,9 @@ def test_decoder_seeks_to_manifest_timestamp(monkeypatch: pytest.MonkeyPatch, tm
             return True
 
         def read(self) -> tuple[bool, np.ndarray]:
-            return True, np.full((8, 12, 3), 64, dtype=np.uint8)
+            frame = np.zeros((8, 12, 3), dtype=np.uint8)
+            frame[:, :] = (10, 20, 30)
+            return True, frame
 
         def release(self) -> None:
             observed["released"] = True
@@ -182,6 +184,7 @@ def test_decoder_seeks_to_manifest_timestamp(monkeypatch: pytest.MonkeyPatch, tm
     assert observed["path"] == str(segment)
     assert observed["seek"][1] == pytest.approx(50.0)
     assert observed["released"] is True
+    assert frame[0, 0].tolist() == [30, 20, 10]
 
 
 def test_decoder_rejects_missing_and_escaping_segments(tmp_path: Path) -> None:
@@ -211,6 +214,57 @@ def test_decoder_reports_unreadable_segment(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setattr("training.datasets.frodobots_2k_dataset.cv2.VideoCapture", ClosedCapture)
 
     with pytest.raises(FrameDecodeError, match="cannot open HLS segment"):
+        HlsFrameDecoder(tmp_path).decode(load_sample(sample_row()))
+
+
+def test_decoder_reports_seek_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    segment = tmp_path / SEGMENT_REF
+    segment.parent.mkdir(parents=True)
+    segment.touch()
+
+    class UnseekableCapture:
+        def __init__(self, path: str) -> None:
+            pass
+
+        def isOpened(self) -> bool:
+            return True
+
+        def set(self, property_id: int, value: float) -> bool:
+            return False
+
+        def release(self) -> None:
+            pass
+
+    monkeypatch.setattr("training.datasets.frodobots_2k_dataset.cv2.VideoCapture", UnseekableCapture)
+
+    with pytest.raises(FrameDecodeError, match="cannot seek"):
+        HlsFrameDecoder(tmp_path).decode(load_sample(sample_row()))
+
+
+def test_decoder_reports_read_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    segment = tmp_path / SEGMENT_REF
+    segment.parent.mkdir(parents=True)
+    segment.touch()
+
+    class UnreadableCapture:
+        def __init__(self, path: str) -> None:
+            pass
+
+        def isOpened(self) -> bool:
+            return True
+
+        def set(self, property_id: int, value: float) -> bool:
+            return True
+
+        def read(self) -> tuple[bool, None]:
+            return False, None
+
+        def release(self) -> None:
+            pass
+
+    monkeypatch.setattr("training.datasets.frodobots_2k_dataset.cv2.VideoCapture", UnreadableCapture)
+
+    with pytest.raises(FrameDecodeError, match="cannot decode frame"):
         HlsFrameDecoder(tmp_path).decode(load_sample(sample_row()))
 
 
