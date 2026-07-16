@@ -290,7 +290,7 @@ def write_gallery(entries: list[dict[str, str]], output_path: Path) -> None:
         )
     document = """<!doctype html><html><head><meta charset='utf-8'><title>Traversability Pilot Review</title>
 <style>body{font-family:system-ui,sans-serif;margin:24px;background:#f4f5f6;color:#17191c}article{background:white;border:1px solid #ccd0d5;margin:0 0 24px;padding:16px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}figure{margin:0}img{width:100%;height:auto;display:block}figcaption{padding-top:6px;font-weight:600}@media(max-width:800px){.grid{grid-template-columns:1fr}}</style>
-</head><body><h1>Traversability Pilot Review</h1><p>All masks are unverified pseudo-label drafts. Edit review.csv after inspection.</p><p><strong>Overlay legend:</strong> red = proposed non-traversable, green = proposed traversable, yellow = unknown/ignore. Confirm every region manually.</p>{cards}</body></html>""".format(cards="\n".join(cards))
+</head><body><h1>Traversability Pilot Review</h1><p>All masks are unverified pseudo-label drafts. Edit review.csv after inspection.</p><p><strong>Overlay legend:</strong> red = proposed non-traversable, green = proposed traversable, yellow = unknown/ignore. Confirm every region manually.</p>__CARDS__</body></html>""".replace("__CARDS__", "\n".join(cards))
     output_path.write_text(document, encoding="utf-8")
 
 
