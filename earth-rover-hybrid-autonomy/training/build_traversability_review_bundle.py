@@ -202,7 +202,9 @@ def _load_model(mapping_config: dict[str, object], device: torch.device) -> dict
         from huggingface_hub import hf_hub_download
         from transformers import AutoImageProcessor, SegformerForSemanticSegmentation
     except ImportError as exc:
-        raise SystemExit("install requirements-segmentation.txt on Dell before running this command") from exc
+        raise SystemExit(
+            f"cannot import the SegFormer runtime; install requirements-segmentation.txt on Dell: {exc}"
+        ) from exc
 
     checkpoint = str(mapping_config["checkpoint"])
     revision = str(mapping_config["revision"])
@@ -451,7 +453,7 @@ def _counter_distribution(counts: Counter[str], limit: int | None = None) -> dic
 
 
 def _package_versions() -> dict[str, str | None]:
-    packages = ("torch", "torchvision", "transformers", "tokenizers", "safetensors", "huggingface-hub")
+    packages = ("torch", "torchvision", "transformers", "tokenizers", "safetensors", "huggingface-hub", "Pillow")
     versions: dict[str, str | None] = {}
     for package in packages:
         try:

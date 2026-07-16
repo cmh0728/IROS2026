@@ -4,3 +4,4 @@
 # tokenizers is a transformers runtime dependency and is resolved transitively.
 transformers==5.4.0
 safetensors==0.7.0
+Pillow==11.3.0

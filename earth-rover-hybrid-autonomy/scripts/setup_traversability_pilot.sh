@@ -68,7 +68,7 @@ after = {
 if before != after:
     raise SystemExit(f"PyTorch/CUDA environment changed: before={before}, after={after}")
 
-packages = ("torch", "torchvision", "transformers", "tokenizers", "safetensors", "huggingface-hub")
+packages = ("torch", "torchvision", "transformers", "tokenizers", "safetensors", "huggingface-hub", "Pillow")
 versions = {package: importlib.metadata.version(package) for package in packages}
 report = {"before": before, "after": after, "installed_packages": versions}
 path = Path(sys.argv[2]) / "installed_versions.json"
