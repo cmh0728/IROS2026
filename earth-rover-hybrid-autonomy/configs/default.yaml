@@ -1,0 +1,83 @@
+project:
+  name: earth-rover-hybrid-autonomy
+  mode: urban
+  loop_hz: 5
+
+sdk:
+  base_url: "http://localhost:8000"
+  request_timeout_sec: 0.25
+  max_consecutive_failures: 3
+
+control:
+  linear_min: -0.25
+  linear_max: 0.35
+  angular_min: -0.70
+  angular_max: 0.70
+
+  base_linear: 0.22
+  min_forward_linear: 0.10
+  reverse_linear: -0.18
+  rotate_angular: 0.55
+
+  heading_kp: 0.70
+  heading_kd: 0.05
+  local_goal_kp: 0.35
+
+  slow_heading_error_deg: 35
+  rotate_in_place_error_deg: 90
+
+  command_smoothing_alpha: 0.45
+  max_linear_delta_per_sec: 0.25
+  max_angular_delta_per_sec: 0.80
+
+latency:
+  enabled: true
+  assumed_latency_sec: 0.50
+  angular_scale_deg_per_sec_at_full_cmd: 60.0
+  disable_when_stuck: true
+  disable_when_signal_low: true
+
+urban:
+  checkpoint_radius_m: 15.0
+  waypoint_switch_radius_m: 15.0
+  goal_alignment_weight: 0.45
+  traversability_weight: 0.40
+  obstacle_weight: 0.60
+  turning_cost_weight: 0.10
+
+perception:
+  input_width: 320
+  input_height: 240
+  use_traversability_model: false
+  obstacle_stop_threshold: 0.75
+  traversability_threshold: 0.45
+
+safety:
+  enable_emergency_stop: true
+  frame_timeout_sec: 1.0
+  data_timeout_sec: 1.0
+  command_loop_delay_limit_sec: 0.5
+  sdk_failure_limit: 3
+
+stuck:
+  enabled: true
+  stuck_time_sec: 3.0
+  min_speed_for_not_stuck: 0.03
+  min_position_delta_m: 0.15
+  low_rpm_threshold: 1.0
+
+recovery:
+  enabled: true
+  stop_duration_sec: 0.5
+  reverse_duration_sec: 1.0
+  rotate_duration_sec: 1.2
+  reverse_linear: -0.18
+  rotate_angular: 0.55
+  max_attempts: 3
+
+logging:
+  enabled: true
+  save_frames: true
+  save_debug_images: true
+  log_dir: "logs"
+

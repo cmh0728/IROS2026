@@ -1,0 +1,40 @@
+project:
+  mode: urban
+  loop_hz: 5
+  profile: latency_2s
+
+latency:
+  enabled: true
+  assumed_latency_sec: 2.0
+  sensor_delay_sec: 2.0
+  frame_delay_sec: 2.0
+  data_delay_sec: 2.0
+  command_delay_sec: 0.0
+
+status_output:
+  enabled: true
+  interval_sec: 1.0
+
+control:
+  linear_min: 0.0
+  linear_max: 0.22
+  angular_min: -0.55
+  angular_max: 0.55
+  command_smoothing_alpha: 0.6
+  base_linear: 0.18
+  heading_kp: 0.60
+  slow_heading_error_deg: 30
+
+urban:
+  checkpoint_radius_m: 15.0
+  waypoint_switch_radius_m: 15.0
+  base_speed: 0.18
+  max_speed: 0.22
+  heading_kp: 0.60
+  slow_down_heading_error_deg: 30
+
+safety:
+  enable_emergency_stop: true
+  enable_latency_mode: true
+  frame_timeout_sec: 3.0
+  data_timeout_sec: 3.0

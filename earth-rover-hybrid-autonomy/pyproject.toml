@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "earth-rover-hybrid-autonomy"
+version = "0.1.0"
+description = "Urban GPS MVP for Earth Rover Challenge using a latency-aware hybrid reactive controller."
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "opencv-python",
+  "pydantic",
+  "pyyaml",
+  "requests",
+  "pandas",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+

@@ -1,0 +1,15 @@
+# Shared runtime, replay, data, and test dependencies.
+numpy==1.26.4
+opencv-python==4.9.0.80
+pandas==2.3.3
+pydantic==2.8.2
+PyYAML==6.0.3
+requests==2.32.3
+pytest==8.4.2
+datasets==4.5.0
+huggingface-hub==1.8.0
+
+# Keep Mac development lightweight; provision CUDA training only on Ubuntu/Linux x86_64.
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.7.1+cu118; sys_platform == "linux" and platform_machine == "x86_64"
+torchvision==0.22.1+cu118; sys_platform == "linux" and platform_machine == "x86_64"
