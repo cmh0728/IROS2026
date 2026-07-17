@@ -79,10 +79,20 @@ Paths can be overridden with `DATASET_ROOT`, `MANIFEST_PATH`, `BUNDLE_ROOT`, `SA
 Copy the self-contained bundle by running this on the Mac, replacing both placeholders:
 
 ```bash
-rsync -ah --info=progress2 \
+rsync -ah --progress \
   asl@<DELL_TAILSCALE_IP>:/home/asl/datasets/review_bundles/traversability_pilot_v1/ \
   <MAC_DESTINATION>/traversability_pilot_v1/
 ```
+
+## Traversability Dataset v1 Annotation Pilot
+
+After reviewing the pseudo-label pilot, prepare exactly 20 images for manual four-class annotation without rerunning SegFormer:
+
+```bash
+./scripts/run_traversability_annotation_pilot.sh
+```
+
+The default output is `$HOME/datasets/generated/traversability_dataset_v1/pilot_20/`. Follow `docs/training/traversability_dataset_v1_annotation.md` for the CVAT workflow and Dell-only import/validation commands. The required IDs are `0 IGNORE`, `1 ON_ROAD`, `2 OFF_ROAD`, and `3 OBSTACLE`. Do not expand the dataset or train from these masks until the user reviews and approves the completed pilot.
 
 ## Berkeley-FrodoBots-7K Probe
 

@@ -1,0 +1,32 @@
+version: 1
+ignore_index: 0
+mask_format: single_channel_png
+classes:
+  - id: 0
+    name: IGNORE
+    color_rgb: [0, 0, 0]
+    contributes_to_loss: false
+    definition: Uncertain, ambiguous, or excluded pixels.
+  - id: 1
+    name: ON_ROAD
+    color_rgb: [38, 166, 91]
+    contributes_to_loss: true
+    definition: Traversable paved ground.
+  - id: 2
+    name: OFF_ROAD
+    color_rgb: [43, 126, 216]
+    contributes_to_loss: true
+    definition: Traversable unpaved ground.
+  - id: 3
+    name: OBSTACLE
+    color_rgb: [220, 50, 47]
+    contributes_to_loss: true
+    definition: A region the rover must not enter.
+policies:
+  paved_preference: Implement in planner cost, never in segmentation labels.
+  uncertain_ground: IGNORE
+  dynamic_obstacle: OBSTACLE
+  curb_or_stairs: OBSTACLE
+  sky: IGNORE
+  rover_hood: IGNORE
+  out_of_frame_padding: IGNORE
