@@ -45,7 +45,7 @@ OFF_ROAD_CLASSES = {"earth", "grass", "field", "sand", "path", "dirt track", "la
 PERSON_CLASSES = {"person"}
 VEHICLE_CLASSES = {"car", "bus", "truck", "van", "bicycle", "minibike"}
 STREET_OBJECT_CLASSES = {"bench", "pole", "streetlight", "signboard", "column"}
-STRUCTURE_OBSTACLE_CLASSES = {"wall", "building", "fence", "railing"}
+STRUCTURE_OBSTACLE_CLASSES = {"wall", "building", "fence", "railing", "tree"}
 CURB_OR_STAIRS_CLASSES = {"stairs", "stairway", "step"}
 TARGET_SCENE_CATEGORIES = (
     "PAVED_GROUND",
@@ -59,6 +59,9 @@ TARGET_SCENE_CATEGORIES = (
     "TURNING",
     "SHADOW_CANDIDATE",
     "BACKLIGHT_CANDIDATE",
+    "BLUR_CANDIDATE",
+    "REFLECTION_CANDIDATE",
+    "NARROW_PASSAGE_CANDIDATE",
 )
 EXPECTED_LABELS = {"IGNORE": 0, "ON_ROAD": 1, "OFF_ROAD": 2, "OBSTACLE": 3}
 EXPECTED_COLORS = {
@@ -132,6 +135,7 @@ def classify_scene(metadata: dict[str, object], image_path: Path) -> tuple[tuple
     street_object = sum(semantic_fractions.get(name, 0.0) for name in STREET_OBJECT_CLASSES)
     structure = sum(semantic_fractions.get(name, 0.0) for name in STRUCTURE_OBSTACLE_CLASSES)
     curb_stairs = sum(semantic_fractions.get(name, 0.0) for name in CURB_OR_STAIRS_CLASSES)
+    reflection = sum(semantic_fractions.get(name, 0.0) for name in {"water", "mirror", "screen"})
     source = metadata["source"]
 
     image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
@@ -141,6 +145,7 @@ def classify_scene(metadata: dict[str, object], image_path: Path) -> tuple[tuple
     split = max(1, image.shape[0] // 2)
     top_mean = float(np.mean(image[:split]))
     bottom_mean = float(np.mean(image[split:]))
+    laplacian_variance = float(cv2.Laplacian(image, cv2.CV_64F).var())
 
     categories: set[str] = set()
     if paved >= 0.03:
@@ -165,6 +170,12 @@ def classify_scene(metadata: dict[str, object], image_path: Path) -> tuple[tuple
         categories.add("SHADOW_CANDIDATE")
     if top_mean - bottom_mean >= 55.0 and p90 >= 210.0:
         categories.add("BACKLIGHT_CANDIDATE")
+    if 8.0 <= laplacian_variance < 80.0:
+        categories.add("BLUR_CANDIDATE")
+    if reflection >= 0.01:
+        categories.add("REFLECTION_CANDIDATE")
+    if paved + off_road >= 0.05 and structure + street_object >= 0.10:
+        categories.add("NARROW_PASSAGE_CANDIDATE")
     if not categories:
         categories.add("OTHER")
     evidence = {
@@ -176,13 +187,20 @@ def classify_scene(metadata: dict[str, object], image_path: Path) -> tuple[tuple
             "street_furniture_or_pole": street_object,
             "structure_obstacle": structure,
             "curb_or_stairs": curb_stairs,
+            "reflection": reflection,
         },
+        "pseudo_unknown_fraction": float(
+            metadata.get("traversability_class_area", {})
+            .get("UNKNOWN_OR_IGNORE", {})
+            .get("fraction", 0.0)
+        ),
         "top_semantic_fraction": semantic_fractions,
         "image_luminance": {
             "p10": p10,
             "p90": p90,
             "top_mean": top_mean,
             "bottom_mean": bottom_mean,
+            "laplacian_variance": laplacian_variance,
         },
         "warning": "Categories are deterministic candidates for sampling and require human confirmation.",
     }
@@ -236,6 +254,7 @@ def build_annotation_bundle(
     source_bundle: str | Path,
     seed: int,
     minimum_separation_seconds: float,
+    sample_id_prefix: str = "trav_v1_",
 ) -> dict[str, object]:
     root = Path(output_dir).expanduser().resolve()
     if root.exists() and any(root.iterdir()):
@@ -249,7 +268,7 @@ def build_annotation_bundle(
 
     entries: list[dict[str, str]] = []
     for position, candidate in enumerate(selected):
-        sample_id = f"trav_v1_{position:05d}"
+        sample_id = f"{sample_id_prefix}{position:05d}"
         image_suffix = candidate.image_path.suffix.lower() or ".jpg"
         image_relative = f"images/{sample_id}{image_suffix}"
         shutil.copy2(candidate.image_path, root / image_relative)
@@ -292,7 +311,7 @@ def build_annotation_bundle(
     _write_metadata_csv(entries, root / "metadata.csv")
     write_contact_sheet(entries, root, root / "contact_sheet.jpg")
     write_cvat_seed_archive(entries, root, root / "cvat_seed_annotations.zip")
-    _write_bundle_readme(root)
+    _write_bundle_readme(root, len(entries))
     category_counts = Counter(
         category
         for entry in entries
@@ -841,10 +860,10 @@ def _write_metadata_csv(entries: list[dict[str, str]], output: Path) -> None:
         writer.writerows(entries)
 
 
-def _write_bundle_readme(root: Path) -> None:
-    text = """# Traversability Dataset v1 Annotation Pilot
+def _write_bundle_readme(root: Path, sample_count: int) -> None:
+    text = f"""# Traversability Dataset v1 Annotation Bundle
 
-This 20-image bundle is for manual pixel annotation. It is not a training dataset until every mask passes the Dell validator and the user approves expansion.
+This {sample_count}-image bundle is for manual pixel annotation. It is not a training dataset until every mask passes the Dell validator and the user approves it.
 
 ## Labels
 

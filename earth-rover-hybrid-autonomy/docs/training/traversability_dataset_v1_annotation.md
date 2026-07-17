@@ -80,3 +80,17 @@ python3 training/validate_traversability_dataset_v1.py \
 The validator rejects missing or extra masks, duplicate sample IDs, filename mismatches, dimension mismatches, multi-channel final masks, and IDs outside `0..3`. It reports per-image and overall class distributions plus all-IGNORE and single-class warnings. Stop after validation and review `overlay_contact_sheet.jpg` or `review.html` before expanding the dataset or training a model.
 
 Reviewed outputs are written under `pilot_20/reviewed_import/`: normalized masks in `masks/`, colored mask previews in `mask_visualizations/`, overlays in `overlays/`, per-image statistics in `per_image_statistics.csv`, and the full validator result in `validation_report.json`. Copy `overlay_contact_sheet.jpg` to the Mac for the final human gate; do not train after an automated PASS alone.
+
+## Approved 100-Image Expansion
+
+After explicit approval of the 20-image pilot, prepare the additional annotation bundle on Dell:
+
+```bash
+./scripts/build_traversability_annotation_100.sh
+```
+
+The workflow reuses the full manifest, lazy HLS decoder, conservative SegFormer pseudo-label pipeline, and the four-class bundle writer. It runs pseudo inference on a bounded 240-frame candidate pool only, then selects exactly 100 images. It does not run inference over the full dataset and does not train a model.
+
+Selection excludes exact provenance matches, nearby timestamps, and visual near-duplicates of the approved 20 images. A 64-bit difference hash suppresses near-identical candidates, each ride is capped at five images, and selected timestamps from the same ride are separated by at least 10 seconds. Sky-dominant, severely blurred, low-information, and high-unknown-without-ground candidates are reported separately and do not count toward the 100 images.
+
+The default bundle is `$HOME/datasets/generated/traversability_dataset_v1/annotation_100_v1/`. It uses `trav_v1_add_#####` sample IDs so the approved `trav_v1_#####` pilot remains unchanged. `cvat_seed_annotations.zip` remains an unverified draft: old traversable maps to `ON_ROAD`, old non-traversable maps to `OBSTACLE`, old unknown maps to `IGNORE`, and `OFF_ROAD` is never auto-generated. Stop after bundle generation and complete all 100 annotations manually in CVAT.

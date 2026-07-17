@@ -94,6 +94,14 @@ After reviewing the pseudo-label pilot, prepare exactly 20 images for manual fou
 
 The default output is `$HOME/datasets/generated/traversability_dataset_v1/pilot_20/`. Follow `docs/training/traversability_dataset_v1_annotation.md` for the CVAT workflow and Dell-only import/validation commands. The required IDs are `0 IGNORE`, `1 ON_ROAD`, `2 OFF_ROAD`, and `3 OBSTACLE`. Do not expand the dataset or train from these masks until the user reviews and approves the completed pilot.
 
+After explicit approval of the imported 20-image pilot, build the additional 100-image CVAT bundle on Dell:
+
+```bash
+./scripts/build_traversability_annotation_100.sh
+```
+
+This performs bounded pseudo inference on 240 manifest samples for selection and seed drafts, not full-dataset inference. It excludes the approved pilot by provenance, time, and visual hash; caps each ride at five selected images; and writes the new bundle outside Git under `$HOME/datasets/generated/traversability_dataset_v1/annotation_100_v1/`. Stop after generation and annotate all 100 images manually before any training.
+
 ## Berkeley-FrodoBots-7K Probe
 
 Do not download the full Berkeley-FrodoBots-7K dataset during initial work. It is too large for local iteration.
