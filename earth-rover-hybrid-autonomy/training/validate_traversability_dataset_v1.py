@@ -18,10 +18,15 @@ from training.traversability_review import write_json
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate completed traversability_dataset_v1 image-mask pairs.")
     parser.add_argument("--bundle", required=True)
+    parser.add_argument("--masks-dir")
+    parser.add_argument("--report-path")
     args = parser.parse_args()
     root = Path(args.bundle).expanduser().resolve()
-    report = validate_annotation_dataset(root, require_masks=True)
-    write_json(root / "validation_report.json", report)
+    masks_dir = Path(args.masks_dir).expanduser().resolve() if args.masks_dir else root / "reviewed_import/masks"
+    report_path = Path(args.report_path).expanduser().resolve() if args.report_path else root / "reviewed_import/validation_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report = validate_annotation_dataset(root, require_masks=True, masks_dir=masks_dir)
+    write_json(report_path, report)
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["valid"] else 1
 

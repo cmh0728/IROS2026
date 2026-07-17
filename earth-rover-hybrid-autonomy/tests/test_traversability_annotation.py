@@ -5,15 +5,20 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 import yaml
 
 from training.traversability_annotation import (
     AnnotationCandidate,
     class_id_mask,
     convert_pseudo_seed,
+    cvat_label_mapping,
     import_cvat_masks,
+    normalize_cvat_class_mask,
+    parse_cvat_labelmap,
     select_annotation_candidates,
     validate_annotation_dataset,
+    write_annotation_review_outputs,
 )
 
 
@@ -172,13 +177,81 @@ def test_import_cvat_color_mask_and_validate(tmp_path: Path) -> None:
     assert ok
     export = tmp_path / "export.zip"
     with zipfile.ZipFile(export, "w") as archive:
+        archive.writestr("labelmap.txt", ordered_labelmap())
         archive.writestr("SegmentationClass/trav_v1_00000.png", encoded.tobytes())
 
-    result = import_cvat_masks(tmp_path, export)
+    output = tmp_path / "reviewed_import"
+    result = import_cvat_masks(tmp_path, export, output)
 
     assert result["imported_mask_count"] == 1
-    assert validate_annotation_dataset(tmp_path)["valid"] is True
-    assert cv2.imread(str(tmp_path / "masks/trav_v1_00000.png"), cv2.IMREAD_UNCHANGED).tolist() == [[0, 1], [2, 3]]
+    assert result["segmentation_object_used"] is False
+    assert validate_annotation_dataset(tmp_path, masks_dir=output / "masks")["valid"] is True
+    assert cv2.imread(str(output / "masks/trav_v1_00000.png"), cv2.IMREAD_UNCHANGED).tolist() == [[0, 1], [2, 3]]
+    assert (output / "mask_visualizations/trav_v1_00000.png").is_file()
+
+
+def test_reordered_labelmap_indices_are_mapped_by_name_and_background_is_ignore() -> None:
+    entries = parse_cvat_labelmap(reordered_labelmap())
+    index_to_id, color_to_id = cvat_label_mapping(entries)
+    source = np.array([[4, 3], [2, 1]], dtype=np.uint8)
+
+    result = normalize_cvat_class_mask(source, index_to_id, color_to_id)
+
+    assert result.tolist() == [[0, 1], [2, 3]]
+    assert set(int(value) for value in np.unique(result)) == {0, 1, 2, 3}
+
+
+def test_unknown_label_is_rejected() -> None:
+    with pytest.raises(ValueError, match="unknown CVAT label"):
+        parse_cvat_labelmap(ordered_labelmap() + "MYSTERY:1,2,3::\n")
+
+
+def test_known_label_with_wrong_rgb_is_rejected() -> None:
+    bad = ordered_labelmap().replace("ON_ROAD:38,166,91", "ON_ROAD:1,2,3")
+
+    with pytest.raises(ValueError, match="expected"):
+        parse_cvat_labelmap(bad)
+
+
+def test_segmentation_object_is_not_used_as_class_mask(tmp_path: Path) -> None:
+    write_annotation_bundle(tmp_path)
+    class_mask = np.array([[0, 1], [2, 3]], dtype=np.uint8)
+    object_mask = np.full((2, 2), 3, dtype=np.uint8)
+    export = tmp_path / "export.zip"
+    with zipfile.ZipFile(export, "w") as archive:
+        archive.writestr("labelmap.txt", ordered_labelmap())
+        archive.writestr("SegmentationClass/trav_v1_00000.png", encode_png(class_mask))
+        archive.writestr("SegmentationObject/trav_v1_00000.png", encode_png(object_mask))
+
+    output = tmp_path / "reviewed_import"
+    result = import_cvat_masks(tmp_path, export, output)
+
+    normalized = cv2.imread(str(output / "masks/trav_v1_00000.png"), cv2.IMREAD_UNCHANGED)
+    assert normalized.tolist() == [[0, 1], [2, 3]]
+    assert result["semantic_mask_source"] == "SegmentationClass"
+    assert result["segmentation_object_used"] is False
+
+
+def test_review_outputs_include_statistics_contact_sheet_and_html(tmp_path: Path) -> None:
+    write_annotation_bundle(tmp_path)
+    output = tmp_path / "reviewed_import"
+    (output / "masks").mkdir(parents=True)
+    (output / "overlays").mkdir()
+    (output / "mask_visualizations").mkdir()
+    cv2.imwrite(
+        str(output / "masks/trav_v1_00000.png"),
+        np.array([[0, 1], [2, 3]], dtype=np.uint8),
+    )
+    cv2.imwrite(str(output / "overlays/trav_v1_00000.jpg"), np.zeros((2, 2, 3), dtype=np.uint8))
+    cv2.imwrite(str(output / "mask_visualizations/trav_v1_00000.png"), np.zeros((2, 2, 3), dtype=np.uint8))
+    validation = validate_annotation_dataset(tmp_path, masks_dir=output / "masks")
+
+    write_annotation_review_outputs(tmp_path, output, validation)
+
+    assert (output / "per_image_statistics.csv").is_file()
+    assert (output / "overlay_contact_sheet.jpg").is_file()
+    assert (output / "review.html").is_file()
+    assert "trav_v1_00000" in (output / "review.html").read_text(encoding="utf-8")
 
 
 def write_annotation_bundle(root: Path) -> dict[str, str]:
@@ -227,3 +300,28 @@ def write_metadata_csv(path: Path, row: dict[str, str]) -> None:
 
 def contract_colors() -> dict[int, tuple[int, int, int]]:
     return {0: (0, 0, 0), 1: (38, 166, 91), 2: (43, 126, 216), 3: (220, 50, 47)}
+
+
+def ordered_labelmap() -> str:
+    return """# label:color_rgb:parts:actions
+IGNORE:0,0,0::
+ON_ROAD:38,166,91::
+OFF_ROAD:43,126,216::
+OBSTACLE:220,50,47::
+"""
+
+
+def reordered_labelmap() -> str:
+    return """# label:color_rgb:parts:actions
+IGNORE:0,0,0::
+OBSTACLE:220,50,47::
+OFF_ROAD:43,126,216::
+ON_ROAD:38,166,91::
+background:0,0,0::
+"""
+
+
+def encode_png(mask: np.ndarray) -> bytes:
+    ok, encoded = cv2.imencode(".png", mask)
+    assert ok
+    return encoded.tobytes()

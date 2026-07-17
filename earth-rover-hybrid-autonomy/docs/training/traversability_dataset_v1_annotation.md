@@ -54,13 +54,29 @@ The Mac is for labeling only. Do not run dataset processing, validation, inferen
 
 ## Dell: Import and Validate
 
+For the reviewed export `traversability_pilot_20_reviewed.zip`, run the complete focused import and verification workflow:
+
+```bash
+./scripts/import_validate_traversability_review.sh
+```
+
+The script reads only `SegmentationClass/`. It parses `labelmap.txt` by label name, maps `background` to `IGNORE=0`, rejects unknown labels and contract-color conflicts, and writes normalized results under `pilot_20/reviewed_import/`. It preserves the original ZIP and checks the raw FrodoBots metadata fingerprint.
+
+To run the two CLIs separately after inspecting `--help`:
+
 ```bash
 python3 training/import_cvat_traversability_masks.py \
   --bundle "$HOME/datasets/generated/traversability_dataset_v1/pilot_20" \
-  --cvat-export "$HOME/datasets/generated/traversability_dataset_v1/cvat_export.zip"
+  --cvat-export "$HOME/datasets/generated/traversability_dataset_v1/pilot_20/traversability_pilot_20_reviewed.zip" \
+  --output-dir "$HOME/datasets/generated/traversability_dataset_v1/pilot_20/reviewed_import" \
+  --expected-count 20
 
 python3 training/validate_traversability_dataset_v1.py \
-  --bundle "$HOME/datasets/generated/traversability_dataset_v1/pilot_20"
+  --bundle "$HOME/datasets/generated/traversability_dataset_v1/pilot_20" \
+  --masks-dir "$HOME/datasets/generated/traversability_dataset_v1/pilot_20/reviewed_import/masks" \
+  --report-path "$HOME/datasets/generated/traversability_dataset_v1/pilot_20/reviewed_import/validation_report.json"
 ```
 
-The validator rejects missing or extra masks, duplicate sample IDs, filename mismatches, dimension mismatches, multi-channel final masks, and IDs outside `0..3`. Stop after validation and review the 20 masks before expanding the dataset or training a model.
+The validator rejects missing or extra masks, duplicate sample IDs, filename mismatches, dimension mismatches, multi-channel final masks, and IDs outside `0..3`. It reports per-image and overall class distributions plus all-IGNORE and single-class warnings. Stop after validation and review `overlay_contact_sheet.jpg` or `review.html` before expanding the dataset or training a model.
+
+Reviewed outputs are written under `pilot_20/reviewed_import/`: normalized masks in `masks/`, colored mask previews in `mask_visualizations/`, overlays in `overlays/`, per-image statistics in `per_image_statistics.csv`, and the full validator result in `validation_report.json`. Copy `overlay_contact_sheet.jpg` to the Mac for the final human gate; do not train after an automated PASS alone.

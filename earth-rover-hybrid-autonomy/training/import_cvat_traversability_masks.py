@@ -11,7 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from training.traversability_annotation import import_cvat_masks, validate_annotation_dataset
+from training.traversability_annotation import (
+    import_cvat_masks,
+    validate_annotation_dataset,
+    write_annotation_review_outputs,
+)
 from training.traversability_review import write_json
 
 
@@ -19,11 +23,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Import a CVAT Segmentation Mask export into traversability_dataset_v1.")
     parser.add_argument("--bundle", required=True)
     parser.add_argument("--cvat-export", required=True)
+    parser.add_argument("--output-dir")
+    parser.add_argument("--expected-count", type=int, default=20)
     args = parser.parse_args()
-    report = import_cvat_masks(args.bundle, args.cvat_export)
-    validation = validate_annotation_dataset(args.bundle, require_masks=True)
+    bundle = Path(args.bundle).expanduser().resolve()
+    output = Path(args.output_dir).expanduser().resolve() if args.output_dir else bundle / "reviewed_import"
+    report = import_cvat_masks(
+        bundle,
+        args.cvat_export,
+        output,
+        expected_count=args.expected_count,
+    )
+    validation = validate_annotation_dataset(bundle, require_masks=True, masks_dir=output / "masks")
     report["validation"] = validation
-    write_json(Path(args.bundle).expanduser().resolve() / "import_report.json", report)
+    write_annotation_review_outputs(bundle, output, validation)
+    write_json(output / "import_report.json", report)
+    write_json(output / "validation_report.json", validation)
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if validation["valid"] else 1
 

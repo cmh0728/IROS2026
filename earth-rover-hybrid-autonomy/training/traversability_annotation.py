@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import html
 import json
 import shutil
 import zipfile
@@ -55,6 +56,13 @@ TARGET_SCENE_CATEGORIES = (
     "BACKLIGHT_CANDIDATE",
 )
 EXPECTED_LABELS = {"IGNORE": 0, "ON_ROAD": 1, "OFF_ROAD": 2, "OBSTACLE": 3}
+EXPECTED_COLORS = {
+    "IGNORE": (0, 0, 0),
+    "ON_ROAD": (38, 166, 91),
+    "OFF_ROAD": (43, 126, 216),
+    "OBSTACLE": (220, 50, 47),
+    "background": (0, 0, 0),
+}
 
 
 @dataclass(frozen=True)
@@ -322,25 +330,100 @@ def convert_pseudo_seed(source: Path, destination: Path) -> None:
         raise OSError(f"cannot write initial mask: {destination}")
 
 
-def import_cvat_masks(bundle_root: str | Path, cvat_export: str | Path) -> dict[str, object]:
+def import_cvat_masks(
+    bundle_root: str | Path,
+    cvat_export: str | Path,
+    output_dir: str | Path,
+    expected_count: int | None = None,
+) -> dict[str, object]:
     root = Path(bundle_root).expanduser().resolve()
     export = Path(cvat_export).expanduser().resolve()
+    output = Path(output_dir).expanduser().resolve()
+    if output.parent != root:
+        raise ValueError("output directory must be a direct child of the pilot bundle")
+    if output.exists() and any(output.iterdir()):
+        raise ValueError(f"output directory is not empty: {output}")
     preflight = validate_annotation_dataset(root, require_masks=False)
     if not preflight["valid"]:
         raise ValueError(f"annotation bundle preflight failed: {preflight['errors']}")
     rows = list(csv.DictReader((root / "metadata.csv").open(newline="", encoding="utf-8")))
     name_to_id, colors, _ = label_contract(root / "label_contract.yaml")
     _require_v1_contract(name_to_id)
+    if expected_count is not None and len(rows) != expected_count:
+        raise ValueError(f"expected {expected_count} metadata rows, found {len(rows)}")
     expected = {row["sample_id"]: row for row in rows}
+    label_entries, found = read_cvat_segmentation_export(export)
+    index_to_id, color_to_id = cvat_label_mapping(label_entries)
+    if expected_count is not None and len(found) != expected_count:
+        raise ValueError(f"expected {expected_count} SegmentationClass masks, found {len(found)}")
+    missing = sorted(set(expected) - set(found))
+    extras = sorted(set(found) - set(expected))
+    if missing or extras:
+        raise ValueError(f"CVAT mask set mismatch; missing={missing}, extras={extras}")
+
+    converted: dict[str, np.ndarray] = {}
+    for sample_id, row in expected.items():
+        mask = normalize_cvat_class_mask(found[sample_id], index_to_id, color_to_id)
+        image = cv2.imread(str(root / row["image_path"]), cv2.IMREAD_COLOR)
+        if image is None or mask.shape != image.shape[:2]:
+            raise ValueError(f"{sample_id}: mask dimensions do not match the source image")
+        converted[sample_id] = mask
+
+    masks_dir = output / "masks"
+    overlays_dir = output / "overlays"
+    mask_visualizations_dir = output / "mask_visualizations"
+    masks_dir.mkdir(parents=True, exist_ok=False)
+    overlays_dir.mkdir(parents=True, exist_ok=False)
+    mask_visualizations_dir.mkdir(parents=True, exist_ok=False)
+    for sample_id, mask in converted.items():
+        if not cv2.imwrite(str(masks_dir / f"{sample_id}.png"), mask):
+            raise OSError(f"cannot write imported mask: {sample_id}")
+        image = cv2.imread(str(root / expected[sample_id]["image_path"]), cv2.IMREAD_COLOR)
+        assert image is not None
+        color = colorize_mask(mask, colors)
+        if not cv2.imwrite(
+            str(mask_visualizations_dir / f"{sample_id}.png"),
+            cv2.cvtColor(color, cv2.COLOR_RGB2BGR),
+        ):
+            raise OSError(f"cannot write mask visualization: {sample_id}")
+        overlay = cv2.addWeighted(image, 0.55, cv2.cvtColor(color, cv2.COLOR_RGB2BGR), 0.45, 0.0)
+        if not cv2.imwrite(str(overlays_dir / f"{sample_id}.jpg"), overlay):
+            raise OSError(f"cannot write overlay: {sample_id}")
+    report = {
+        "imported_mask_count": len(converted),
+        "source": str(export),
+        "output_dir": str(output),
+        "masks_dir": str(masks_dir),
+        "labelmap_entries": [
+            {"index": index, "name": name, "color_rgb": list(color), "final_class_id": index_to_id[index]}
+            for index, (name, color) in enumerate(label_entries)
+        ],
+        "semantic_mask_source": "SegmentationClass",
+        "segmentation_object_used": False,
+        "background_merged_into_ignore": any(name == "background" for name, _ in label_entries),
+    }
+    write_json(output / "import_report.json", report)
+    return report
+
+
+def read_cvat_segmentation_export(
+    export: Path,
+) -> tuple[list[tuple[str, tuple[int, int, int]]], dict[str, np.ndarray]]:
     found: dict[str, np.ndarray] = {}
+    labelmap_texts: list[str] = []
     if export.is_dir():
         for path in export.rglob("*.png"):
             if "SegmentationClass" in path.parts:
                 if path.stem in found:
                     raise ValueError(f"duplicate CVAT mask stem: {path.stem}")
                 found[path.stem] = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+        labelmap_paths = list(export.rglob("labelmap.txt"))
+        labelmap_texts = [path.read_text(encoding="utf-8") for path in labelmap_paths]
     elif export.is_file() and zipfile.is_zipfile(export):
         with zipfile.ZipFile(export) as archive:
+            bad = archive.testzip()
+            if bad is not None:
+                raise ValueError(f"CVAT ZIP contains a corrupt member: {bad}")
             for name in archive.namelist():
                 member = PurePosixPath(name)
                 if member.suffix.lower() == ".png" and "SegmentationClass" in member.parts:
@@ -348,30 +431,98 @@ def import_cvat_masks(bundle_root: str | Path, cvat_export: str | Path) -> dict[
                         raise ValueError(f"duplicate CVAT mask stem: {member.stem}")
                     encoded = np.frombuffer(archive.read(name), dtype=np.uint8)
                     found[member.stem] = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
+                elif member.name == "labelmap.txt":
+                    labelmap_texts.append(archive.read(name).decode("utf-8"))
     else:
         raise ValueError("CVAT export must be a directory or ZIP archive")
-    missing = sorted(set(expected) - set(found))
-    extras = sorted(set(found) - set(expected))
-    if missing or extras:
-        raise ValueError(f"CVAT mask set mismatch; missing={missing}, extras={extras}")
-    masks_dir = root / "masks"
-    if any(masks_dir.glob("*.png")):
-        raise ValueError("masks directory is not empty; preserve the existing import")
-    converted: dict[str, np.ndarray] = {}
-    for sample_id, row in expected.items():
-        mask = class_id_mask(found[sample_id], colors)
-        image = cv2.imread(str(root / row["image_path"]), cv2.IMREAD_COLOR)
-        if image is None or mask.shape != image.shape[:2]:
-            raise ValueError(f"{sample_id}: mask dimensions do not match the source image")
-        converted[sample_id] = mask
-    for sample_id, mask in converted.items():
-        if not cv2.imwrite(str(masks_dir / f"{sample_id}.png"), mask):
-            raise OSError(f"cannot write imported mask: {sample_id}")
-    return {"imported_mask_count": len(expected), "source": str(export), "output_dir": str(masks_dir)}
+    if len(labelmap_texts) != 1:
+        raise ValueError(f"expected exactly one labelmap.txt, found {len(labelmap_texts)}")
+    return parse_cvat_labelmap(labelmap_texts[0]), found
 
 
-def validate_annotation_dataset(bundle_root: str | Path, require_masks: bool = True) -> dict[str, object]:
+def parse_cvat_labelmap(text: str) -> list[tuple[str, tuple[int, int, int]]]:
+    entries: list[tuple[str, tuple[int, int, int]]] = []
+    seen_names: set[str] = set()
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(":")
+        if len(parts) < 2:
+            raise ValueError(f"invalid labelmap line {line_number}: {raw_line!r}")
+        name = parts[0].strip()
+        if name not in EXPECTED_COLORS:
+            raise ValueError(f"unknown CVAT label: {name!r}")
+        if name in seen_names:
+            raise ValueError(f"duplicate CVAT label: {name!r}")
+        seen_names.add(name)
+        try:
+            color = tuple(int(channel.strip()) for channel in parts[1].split(","))
+        except ValueError as exc:
+            raise ValueError(f"invalid RGB value for CVAT label {name!r}") from exc
+        if len(color) != 3 or color != EXPECTED_COLORS[name]:
+            raise ValueError(
+                f"CVAT label {name!r} uses RGB {color}, expected {EXPECTED_COLORS[name]}"
+            )
+        entries.append((name, color))
+    missing = set(EXPECTED_LABELS) - seen_names
+    if missing:
+        raise ValueError(f"CVAT labelmap is missing required labels: {sorted(missing)}")
+    return entries
+
+
+def cvat_label_mapping(
+    entries: list[tuple[str, tuple[int, int, int]]],
+) -> tuple[dict[int, int], dict[tuple[int, int, int], int]]:
+    index_to_id: dict[int, int] = {}
+    color_to_id: dict[tuple[int, int, int], int] = {}
+    for index, (name, color) in enumerate(entries):
+        final_id = 0 if name == "background" else EXPECTED_LABELS[name]
+        index_to_id[index] = final_id
+        existing = color_to_id.get(color)
+        if existing is not None and existing != final_id:
+            raise ValueError(f"RGB {color} maps to conflicting final class IDs")
+        color_to_id[color] = final_id
+    return index_to_id, color_to_id
+
+
+def normalize_cvat_class_mask(
+    mask: np.ndarray | None,
+    index_to_id: dict[int, int],
+    color_to_id: dict[tuple[int, int, int], int],
+) -> np.ndarray:
+    if mask is None:
+        raise ValueError("SegmentationClass mask is unreadable")
+    result = np.full(mask.shape[:2], 255, dtype=np.uint8)
+    if mask.ndim == 2:
+        values = set(int(value) for value in np.unique(mask))
+        unknown = values - set(index_to_id)
+        if unknown:
+            raise ValueError(f"SegmentationClass mask uses unknown labelmap indices: {sorted(unknown)}")
+        for source_index, final_id in index_to_id.items():
+            result[mask == source_index] = final_id
+    elif mask.ndim == 3 and mask.shape[2] in {3, 4}:
+        rgb = cv2.cvtColor(mask[:, :, :3], cv2.COLOR_BGR2RGB)
+        for color, final_id in color_to_id.items():
+            result[np.all(rgb == np.asarray(color, dtype=np.uint8), axis=2)] = final_id
+    else:
+        raise ValueError("SegmentationClass mask must be a 1-channel or RGB PNG")
+    if np.any(result == 255):
+        raise ValueError("SegmentationClass mask contains an unknown index or RGB color")
+    return result
+
+
+def validate_annotation_dataset(
+    bundle_root: str | Path,
+    require_masks: bool = True,
+    masks_dir: str | Path | None = None,
+) -> dict[str, object]:
     root = Path(bundle_root).expanduser().resolve()
+    resolved_masks_dir = (
+        Path(masks_dir).expanduser().resolve()
+        if masks_dir is not None
+        else (root / "masks").resolve()
+    )
     rows = list(csv.DictReader((root / "metadata.csv").open(newline="", encoding="utf-8")))
     name_to_id, _, _ = label_contract(root / "label_contract.yaml")
     _require_v1_contract(name_to_id)
@@ -381,6 +532,10 @@ def validate_annotation_dataset(bundle_root: str | Path, require_masks: bool = T
     seen_sources: set[tuple[str, str]] = set()
     expected_masks: set[Path] = set()
     pixel_counts: Counter[int] = Counter()
+    per_image: dict[str, dict[str, object]] = {}
+    all_ignore: list[str] = []
+    single_class: list[str] = []
+    image_references: set[Path] = set()
     for row in rows:
         sample_id = row.get("sample_id", "")
         if not sample_id or sample_id in seen:
@@ -401,19 +556,23 @@ def validate_annotation_dataset(bundle_root: str | Path, require_masks: bool = T
             image_path = _safe_file(root, row["image_path"])
             if image_path.stem != sample_id:
                 raise ValueError("image filename does not match sample_id")
+            if image_path in image_references:
+                raise ValueError("duplicate image reference")
+            image_references.add(image_path)
             image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
             if image is None:
                 raise ValueError("source image is unreadable")
             metadata = json.loads((root / "metadata" / f"{sample_id}.json").read_text(encoding="utf-8"))
             if metadata.get("sample_id") != sample_id:
                 raise ValueError("JSON metadata sample_id differs")
-            mask_path = (root / row["mask_path"]).resolve()
+            declared_mask = Path(row["mask_path"])
+            mask_path = resolved_masks_dir / f"{sample_id}.png"
             if (
-                mask_path.stem != sample_id
-                or mask_path.suffix.lower() != ".png"
-                or mask_path.parent != (root / "masks").resolve()
+                declared_mask.stem != sample_id
+                or declared_mask.suffix.lower() != ".png"
+                or declared_mask.parent != Path("masks")
             ):
-                raise ValueError("mask filename or directory does not match sample_id")
+                raise ValueError("declared mask filename or directory does not match sample_id")
             expected_masks.add(mask_path)
             if not mask_path.is_file():
                 if require_masks:
@@ -430,24 +589,196 @@ def validate_annotation_dataset(bundle_root: str | Path, require_masks: bool = T
             invalid = set(int(value) for value in values) - allowed_ids
             if invalid:
                 raise ValueError(f"mask contains invalid class IDs: {sorted(invalid)}")
-            pixel_counts.update({int(value): int(count) for value, count in zip(values, counts)})
+            image_counts = {int(value): int(count) for value, count in zip(values, counts)}
+            pixel_counts.update(image_counts)
+            total = int(mask.size)
+            present_ids = sorted(image_counts)
+            if present_ids == [0]:
+                all_ignore.append(sample_id)
+            if len(present_ids) == 1:
+                single_class.append(sample_id)
+            per_image[sample_id] = {
+                "ride_id": row["ride_id"],
+                "timestamp": float(row["timestamp"]),
+                "frame_id": int(row["frame_id"]),
+                "manifest_index": int(row["manifest_index"]),
+                "class_pixels": {
+                    name: image_counts.get(class_id, 0)
+                    for name, class_id in sorted(name_to_id.items(), key=lambda item: item[1])
+                },
+                "class_fractions": {
+                    name: image_counts.get(class_id, 0) / total
+                    for name, class_id in sorted(name_to_id.items(), key=lambda item: item[1])
+                },
+                "single_class": len(present_ids) == 1,
+                "all_ignore": present_ids == [0],
+            }
         except (KeyError, OSError, ValueError, json.JSONDecodeError) as exc:
             errors.append(f"{sample_id}: {exc}")
-    actual_masks = set((root / "masks").glob("*.png"))
-    extras = sorted(str(path.relative_to(root)) for path in actual_masks - expected_masks)
-    if extras:
-        errors.append(f"unexpected mask files: {extras}")
+    actual_masks = set(resolved_masks_dir.glob("*.png")) if resolved_masks_dir.is_dir() else set()
+    extra_masks = actual_masks - expected_masks
+    if extra_masks:
+        errors.append(f"unexpected mask files: {sorted(path.name for path in extra_masks)}")
+    if require_masks and not errors:
+        if pixel_counts[EXPECTED_LABELS["ON_ROAD"]] == 0:
+            errors.append("ON_ROAD is absent from all masks")
+        if pixel_counts[EXPECTED_LABELS["OFF_ROAD"]] == 0:
+            errors.append("OFF_ROAD is absent from all masks")
+    total_pixels = sum(pixel_counts.values())
+    class_pixel_counts = {
+        name: pixel_counts[class_id]
+        for name, class_id in sorted(name_to_id.items(), key=lambda item: item[1])
+    }
     return {
         "valid": not errors,
         "sample_count": len(rows),
         "validated_mask_count": sum(1 for path in expected_masks if path.is_file()),
         "require_masks": require_masks,
-        "class_pixel_counts": {
-            name: pixel_counts[class_id]
-            for name, class_id in sorted(name_to_id.items(), key=lambda item: item[1])
+        "masks_dir": str(resolved_masks_dir),
+        "class_pixel_counts": class_pixel_counts,
+        "class_pixel_fractions": {
+            name: count / total_pixels if total_pixels else 0.0
+            for name, count in class_pixel_counts.items()
         },
+        "per_image": per_image,
+        "empty_mask_sample_ids": [],
+        "all_ignore_sample_ids": all_ignore,
+        "single_class_sample_ids": single_class,
+        "warnings": [
+            *([f"all-IGNORE masks: {all_ignore}"] if all_ignore else []),
+            *([f"single-class masks: {single_class}"] if single_class else []),
+        ],
         "errors": errors,
     }
+
+
+def write_annotation_review_outputs(
+    bundle_root: str | Path,
+    output_dir: str | Path,
+    validation: dict[str, object],
+) -> None:
+    root = Path(bundle_root).expanduser().resolve()
+    output = Path(output_dir).expanduser().resolve()
+    per_image = validation["per_image"]
+    if not isinstance(per_image, dict) or not per_image:
+        raise ValueError("cannot create review outputs without validated image statistics")
+    rows = list(csv.DictReader((root / "metadata.csv").open(newline="", encoding="utf-8")))
+    fields = [
+        "sample_id", "ride_id", "timestamp", "frame_id", "manifest_index",
+        "IGNORE_pixels", "IGNORE_fraction", "ON_ROAD_pixels", "ON_ROAD_fraction",
+        "OFF_ROAD_pixels", "OFF_ROAD_fraction", "OBSTACLE_pixels", "OBSTACLE_fraction",
+        "single_class", "all_ignore",
+    ]
+    with (output / "per_image_statistics.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        for row in rows:
+            stats = per_image[row["sample_id"]]
+            writer.writerow(
+                {
+                    "sample_id": row["sample_id"],
+                    "ride_id": stats["ride_id"],
+                    "timestamp": stats["timestamp"],
+                    "frame_id": stats["frame_id"],
+                    "manifest_index": stats["manifest_index"],
+                    **{
+                        f"{name}_pixels": stats["class_pixels"][name]
+                        for name in EXPECTED_LABELS
+                    },
+                    **{
+                        f"{name}_fraction": stats["class_fractions"][name]
+                        for name in EXPECTED_LABELS
+                    },
+                    "single_class": stats["single_class"],
+                    "all_ignore": stats["all_ignore"],
+                }
+            )
+    _write_overlay_contact_sheet(rows, root, output)
+    _write_annotation_review_html(rows, output, per_image)
+
+
+def _write_overlay_contact_sheet(rows: list[dict[str, str]], root: Path, output: Path) -> None:
+    tile_width, tile_height, caption_height = 320, 180, 32
+    columns = 3
+    canvas = np.full(
+        (len(rows) * (tile_height + caption_height), columns * tile_width, 3),
+        245,
+        dtype=np.uint8,
+    )
+    for row_index, row in enumerate(rows):
+        sample_id = row["sample_id"]
+        image = cv2.imread(str(root / row["image_path"]), cv2.IMREAD_COLOR)
+        mask = cv2.imread(str(output / "masks" / f"{sample_id}.png"), cv2.IMREAD_GRAYSCALE)
+        overlay = cv2.imread(str(output / "overlays" / f"{sample_id}.jpg"), cv2.IMREAD_COLOR)
+        if image is None or mask is None or overlay is None:
+            raise OSError(f"cannot read review assets for {sample_id}")
+        mask_rgb = colorize_mask(mask, {class_id: EXPECTED_COLORS[name] for name, class_id in EXPECTED_LABELS.items()})
+        assets = (image, cv2.cvtColor(mask_rgb, cv2.COLOR_RGB2BGR), overlay)
+        interpolations = (cv2.INTER_AREA, cv2.INTER_NEAREST, cv2.INTER_AREA)
+        y = row_index * (tile_height + caption_height)
+        for column, (asset, interpolation) in enumerate(zip(assets, interpolations)):
+            x = column * tile_width
+            canvas[y : y + tile_height, x : x + tile_width] = _fit_bgr(
+                asset,
+                tile_width,
+                tile_height,
+                interpolation,
+            )
+        caption = f"{sample_id} ride={row['ride_id']} frame={row['frame_id']} | original / mask / overlay"
+        cv2.putText(
+            canvas,
+            caption,
+            (6, y + tile_height + 22),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.48,
+            (30, 30, 30),
+            1,
+            cv2.LINE_AA,
+        )
+    if not cv2.imwrite(str(output / "overlay_contact_sheet.jpg"), canvas):
+        raise OSError("cannot write overlay contact sheet")
+
+
+def _write_annotation_review_html(
+    rows: list[dict[str, str]],
+    output: Path,
+    per_image: dict[str, object],
+) -> None:
+    cards: list[str] = []
+    for row in rows:
+        sample_id = row["sample_id"]
+        stats = per_image[sample_id]
+        cards.append(
+            "<article><h2>{sample}</h2><p>ride={ride} timestamp={timestamp} frame={frame}</p>"
+            "<div class='grid'><figure><img src='../{image}'><figcaption>Original</figcaption></figure>"
+            "<figure><img class='pixel' src='mask_visualizations/{sample}.png'><figcaption>Colorized class-ID mask</figcaption></figure>"
+            "<figure><img src='overlays/{sample}.jpg'><figcaption>Overlay</figcaption></figure></div>"
+            "<pre>{stats}</pre></article>".format(
+                sample=html.escape(sample_id),
+                ride=html.escape(row["ride_id"]),
+                timestamp=html.escape(row["timestamp"]),
+                frame=html.escape(row["frame_id"]),
+                image=html.escape(row["image_path"]),
+                stats=html.escape(json.dumps(stats, indent=2, sort_keys=True)),
+            )
+        )
+    document = """<!doctype html><html><head><meta charset='utf-8'><title>Reviewed Traversability Masks</title>
+<style>body{font-family:system-ui,sans-serif;margin:24px;background:#f4f5f6;color:#17191c}article{background:white;border:1px solid #ccd0d5;margin:0 0 24px;padding:16px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}figure{margin:0}img{width:100%;height:auto;display:block}.pixel{image-rendering:pixelated}figcaption{padding-top:6px;font-weight:600}@media(max-width:900px){.grid{grid-template-columns:1fr}}</style>
+</head><body><h1>Reviewed Traversability Masks</h1><p>Legend: black IGNORE, green ON_ROAD, blue OFF_ROAD, red OBSTACLE.</p>__CARDS__</body></html>""".replace("__CARDS__", "\n".join(cards))
+    (output / "review.html").write_text(document, encoding="utf-8")
+
+
+def _fit_bgr(image: np.ndarray, width: int, height: int, interpolation: int) -> np.ndarray:
+    source_height, source_width = image.shape[:2]
+    scale = min(width / source_width, height / source_height)
+    resized_width = max(1, round(source_width * scale))
+    resized_height = max(1, round(source_height * scale))
+    resized = cv2.resize(image, (resized_width, resized_height), interpolation=interpolation)
+    canvas = np.full((height, width, 3), 245, dtype=np.uint8)
+    left = (width - resized_width) // 2
+    top = (height - resized_height) // 2
+    canvas[top : top + resized_height, left : left + resized_width] = resized
+    return canvas
 
 
 def class_id_mask(mask: np.ndarray | None, colors: dict[int, tuple[int, int, int]]) -> np.ndarray:
