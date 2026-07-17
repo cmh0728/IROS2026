@@ -13,7 +13,12 @@ from pathlib import Path, PurePosixPath
 import cv2
 import numpy as np
 
-from training.traversability_review import label_contract, write_contact_sheet, write_json
+from training.traversability_review import (
+    colorize_mask,
+    label_contract,
+    write_contact_sheet,
+    write_json,
+)
 
 
 ANNOTATION_FIELDS = (
