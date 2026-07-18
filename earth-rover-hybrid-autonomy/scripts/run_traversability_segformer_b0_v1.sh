@@ -13,6 +13,7 @@ OVERFIT_DIR="$EXPERIMENT_ROOT/overfit_sanity"
 TRAINING_DIR="$EXPERIMENT_ROOT/full_training"
 CONFIG_PATH="$ROOT_DIR/configs/traversability_segformer_b0_v1.yaml"
 SEED="${SEED:-20260718}"
+REUSE_APPROVED_DATASET="${REUSE_APPROVED_DATASET:-false}"
 export HF_HOME="${HF_HOME:-$HOME/datasets/generated/huggingface}"
 export CUBLAS_WORKSPACE_CONFIG="${CUBLAS_WORKSPACE_CONFIG:-:4096:8}"
 
@@ -45,8 +46,23 @@ for path in \
         exit 1
     fi
 done
+if [[ "$REUSE_APPROVED_DATASET" != "true" && "$REUSE_APPROVED_DATASET" != "false" ]]; then
+    echo "ERROR: REUSE_APPROVED_DATASET must be true or false." >&2
+    exit 1
+fi
+if [[ "$REUSE_APPROVED_DATASET" == "true" ]]; then
+    for path in "$APPROVED_DATASET/manifest.csv" "$APPROVED_DATASET/metadata.csv" "$APPROVED_DATASET/merge_report.json"; do
+        if [[ ! -f "$path" ]]; then
+            echo "ERROR: Reusable approved dataset is incomplete: $path" >&2
+            exit 1
+        fi
+    done
+elif [[ -d "$APPROVED_DATASET" && -n "$(find "$APPROVED_DATASET" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+    echo "ERROR: Output is not empty; preserve it or set REUSE_APPROVED_DATASET=true: $APPROVED_DATASET" >&2
+    exit 1
+fi
 for path in "$APPROVED_DATASET" "$OVERFIT_DIR" "$TRAINING_DIR"; do
-    if [[ -d "$path" && -n "$(find "$path" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+    if [[ "$path" != "$APPROVED_DATASET" && -d "$path" && -n "$(find "$path" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
         echo "ERROR: Output is not empty; preserve it and choose a new path: $path" >&2
         exit 1
     fi
@@ -98,13 +114,17 @@ before_pilot="$(tree_fingerprint "$PILOT_BUNDLE")"
 before_expansion="$(tree_fingerprint "$EXPANSION_BUNDLE")"
 
 echo "[3/8] Building immutable approved_120_v1 and deterministic ride split"
-PYTHONDONTWRITEBYTECODE=1 "$PYTHON" training/build_approved_traversability_dataset_v1.py \
-    --pilot-bundle "$PILOT_BUNDLE" \
-    --pilot-reviewed "$PILOT_REVIEWED" \
-    --expansion-bundle "$EXPANSION_BUNDLE" \
-    --expansion-reviewed "$EXPANSION_REVIEWED" \
-    --output-dir "$APPROVED_DATASET" \
-    --seed "$SEED"
+if [[ "$REUSE_APPROVED_DATASET" == "true" ]]; then
+    echo "Reusing previously validated approved dataset: $APPROVED_DATASET"
+else
+    PYTHONDONTWRITEBYTECODE=1 "$PYTHON" training/build_approved_traversability_dataset_v1.py \
+        --pilot-bundle "$PILOT_BUNDLE" \
+        --pilot-reviewed "$PILOT_REVIEWED" \
+        --expansion-bundle "$EXPANSION_BUNDLE" \
+        --expansion-reviewed "$EXPANSION_REVIEWED" \
+        --output-dir "$APPROVED_DATASET" \
+        --seed "$SEED"
+fi
 
 echo "[4/8] Verifying the 120-pair dataset and split gate"
 "$PYTHON" - "$APPROVED_DATASET" <<'PY'
@@ -138,6 +158,7 @@ print(f"Split rides: {split['rides']}")
 print(f"Split statistics: {split['statistics']}")
 print("Approved dataset and ride leakage gate: PASS")
 PY
+before_approved="$(tree_fingerprint "$APPROVED_DATASET")"
 
 echo "[5/8] Running the 6-image CUDA overfit sanity gate"
 PYTHONDONTWRITEBYTECODE=1 "$PYTHON" training/train_traversability_segformer.py \
@@ -199,9 +220,14 @@ echo "[8/8] Verifying source immutability and Git exclusion"
 after_raw="$(tree_fingerprint "$DATASET_ROOT")"
 after_pilot="$(tree_fingerprint "$PILOT_BUNDLE")"
 after_expansion="$(tree_fingerprint "$EXPANSION_BUNDLE")"
+after_approved="$(tree_fingerprint "$APPROVED_DATASET")"
 after_git_status="$(git status --porcelain)"
 if [[ "$before_raw" != "$after_raw" || "$before_pilot" != "$after_pilot" || "$before_expansion" != "$after_expansion" ]]; then
     echo "ERROR: An immutable source dataset or approved annotation changed." >&2
+    exit 1
+fi
+if [[ "$before_approved" != "$after_approved" ]]; then
+    echo "ERROR: Approved 120-image dataset changed during training." >&2
     exit 1
 fi
 if [[ "$before_git_status" != "$after_git_status" ]]; then

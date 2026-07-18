@@ -18,22 +18,20 @@ def build_traversability_segformer(
     except ImportError as exc:
         raise RuntimeError("install requirements-segmentation.txt on Dell") from exc
 
-    settings = {
-        "num_labels": 3,
-        "id2label": ID2LABEL,
-        "label2id": {name: class_id for class_id, name in ID2LABEL.items()},
-        "semantic_loss_ignore_index": 255,
-    }
+    if config_dict is not None:
+        config = SegformerConfig.from_dict(config_dict)
+    else:
+        config = SegformerConfig.from_pretrained(CHECKPOINT, revision=REVISION)
+        config.num_labels = 3
+        config.id2label = ID2LABEL
+        config.label2id = {name: class_id for class_id, name in ID2LABEL.items()}
+        config.semantic_loss_ignore_index = 255
     if pretrained:
         return SegformerForSemanticSegmentation.from_pretrained(
             CHECKPOINT,
             revision=REVISION,
+            config=config,
             ignore_mismatched_sizes=True,
             use_safetensors=True,
-            **settings,
         )
-    if config_dict is not None:
-        config = SegformerConfig.from_dict(config_dict)
-    else:
-        config = SegformerConfig.from_pretrained(CHECKPOINT, revision=REVISION, **settings)
     return SegformerForSemanticSegmentation(config)

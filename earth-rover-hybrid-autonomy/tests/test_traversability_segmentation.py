@@ -4,7 +4,9 @@ from types import SimpleNamespace
 
 import cv2
 import numpy as np
+import pytest
 import torch
+import torch.nn.functional as functional
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -16,7 +18,11 @@ from training.datasets.traversability_dataset_v1 import (
     source_mask_to_training,
     training_prediction_to_source,
 )
-from training.train_traversability_segformer import evaluate, metrics_from_confusion
+from training.train_traversability_segformer import (
+    evaluate,
+    metrics_from_confusion,
+    segmentation_loss_sum,
+)
 
 
 def test_source_training_id_mapping_and_inverse() -> None:
@@ -129,13 +135,39 @@ def test_ignore_pixels_are_excluded_from_loss_and_metrics() -> None:
         "pixel_values": torch.zeros((1, 3, 1, 2), dtype=torch.float32),
         "labels": torch.tensor([[[0, 255]]], dtype=torch.int64),
     }
-    criterion = nn.CrossEntropyLoss(ignore_index=255, reduction="sum")
-
-    metrics = evaluate(FixedModel(), [batch], criterion, torch.device("cpu"))
+    metrics = evaluate(FixedModel(), [batch], torch.device("cpu"))
 
     assert metrics["loss"] < 1e-6
     assert sum(sum(row) for row in metrics["confusion_matrix"]) == 1
     assert metrics["pixel_accuracy"] == 1.0
+
+
+def test_deterministic_loss_matches_unweighted_cross_entropy() -> None:
+    logits = torch.tensor(
+        [[[[2.0, -1.0]], [[0.0, 3.0]], [[-2.0, 1.0]]]],
+        dtype=torch.float32,
+    )
+    labels = torch.tensor([[[0, 255]]], dtype=torch.int64)
+
+    actual = segmentation_loss_sum(logits, labels)
+    expected = functional.cross_entropy(logits, labels, ignore_index=255, reduction="sum")
+
+    assert torch.allclose(actual, expected)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required for the deterministic kernel regression")
+def test_segmentation_loss_backward_supports_strict_cuda_determinism() -> None:
+    torch.use_deterministic_algorithms(True)
+    logits = torch.randn((1, 3, 8, 8), device="cuda", requires_grad=True)
+    labels = torch.randint(0, 3, (1, 8, 8), device="cuda")
+    labels[:, 0] = 255
+
+    loss = segmentation_loss_sum(logits, labels)
+    loss.backward()
+
+    assert torch.isfinite(loss)
+    assert logits.grad is not None
+    assert torch.isfinite(logits.grad).all()
 
 
 def write_manifest(root: Path, sample_count: int) -> Path:

@@ -106,13 +106,12 @@ def run_overfit(
     loader = _loader(subset, int(settings["batch_size"]), True, int(config["seed"]))
     eval_loader = _loader(subset, int(settings["batch_size"]), False, int(config["seed"]))
     model = build_traversability_segformer(pretrained=True).to(device)
-    criterion = nn.CrossEntropyLoss(ignore_index=255, reduction="sum")
     optimizer = AdamW(model.parameters(), lr=float(settings["learning_rate"]), weight_decay=0.0)
-    initial = evaluate(model, eval_loader, criterion, device)
+    initial = evaluate(model, eval_loader, device)
     history: list[dict[str, object]] = []
     for epoch in range(1, int(settings["max_epochs"]) + 1):
-        train_loss = train_one_epoch(model, loader, criterion, optimizer, device)
-        metrics = evaluate(model, eval_loader, criterion, device)
+        train_loss = train_one_epoch(model, loader, optimizer, device)
+        metrics = evaluate(model, eval_loader, device)
         history.append({"epoch": epoch, "train_loss": train_loss, "metrics": metrics})
         print(
             f"overfit epoch={epoch:03d} loss={metrics['loss']:.6f} "
@@ -170,7 +169,6 @@ def run_full_training(
     train_loader = _loader(train_dataset, int(config["batch_size"]), True, seed)
     validation_loader = _loader(validation_dataset, int(config["batch_size"]), False, seed)
     model = build_traversability_segformer(pretrained=True).to(device)
-    criterion = nn.CrossEntropyLoss(ignore_index=255, reduction="sum")
     optimizer = AdamW(
         model.parameters(),
         lr=float(config["learning_rate"]),
@@ -185,8 +183,8 @@ def run_full_training(
     best_checkpoint = output / "segformer_b0_best.pt"
     for epoch in range(1, int(config["max_epochs"]) + 1):
         train_dataset.set_epoch(epoch)
-        train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        validation = evaluate(model, validation_loader, criterion, device)
+        train_loss = train_one_epoch(model, train_loader, optimizer, device)
+        validation = evaluate(model, validation_loader, device)
         record = {
             "epoch": epoch,
             "learning_rate": optimizer.param_groups[0]["lr"],
@@ -215,7 +213,7 @@ def run_full_training(
     model.load_state_dict(checkpoint["model_state_dict"])
     reload_delta = verify_checkpoint_reload(model, best_checkpoint, validation_loader, device)
     test_loader = _loader(test_dataset, int(config["batch_size"]), False, seed)
-    test_metrics = evaluate(model, test_loader, criterion, device)
+    test_metrics = evaluate(model, test_loader, device)
     review = write_prediction_review(model, _loader(test_dataset, 1, False, seed), output / "review_bundle", device)
     (output / "final_metrics.json").write_text(
         json.dumps(
@@ -283,7 +281,6 @@ def run_full_training(
 def train_one_epoch(
     model: nn.Module,
     loader: DataLoader,
-    criterion: nn.Module,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
 ) -> float:
@@ -296,7 +293,7 @@ def train_one_epoch(
         optimizer.zero_grad(set_to_none=True)
         logits = _full_resolution_logits(model(images).logits, labels.shape[-2:])
         valid = int((labels != 255).sum().item())
-        loss_sum = criterion(logits, labels)
+        loss_sum = segmentation_loss_sum(logits, labels)
         loss = loss_sum / max(valid, 1)
         if not torch.isfinite(loss):
             raise RuntimeError("training loss became NaN or Inf")
@@ -308,7 +305,7 @@ def train_one_epoch(
 
 
 @torch.no_grad()
-def evaluate(model: nn.Module, loader: DataLoader, criterion: nn.Module, device: torch.device) -> dict[str, object]:
+def evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> dict[str, object]:
     model.eval()
     confusion = torch.zeros((3, 3), dtype=torch.int64)
     total_loss = 0.0
@@ -318,13 +315,25 @@ def evaluate(model: nn.Module, loader: DataLoader, criterion: nn.Module, device:
         labels = batch["labels"].to(device, non_blocking=True)
         logits = _full_resolution_logits(model(images).logits, labels.shape[-2:])
         valid = labels != 255
-        loss_sum = criterion(logits, labels)
+        loss_sum = segmentation_loss_sum(logits, labels)
         total_loss += float(loss_sum.item())
         total_valid += int(valid.sum().item())
         predictions = logits.argmax(dim=1)
         encoded = labels[valid] * 3 + predictions[valid]
         confusion += torch.bincount(encoded.detach().cpu(), minlength=9).reshape(3, 3)
     return metrics_from_confusion(confusion, total_loss / max(total_valid, 1))
+
+
+def segmentation_loss_sum(logits: Tensor, labels: Tensor) -> Tensor:
+    if logits.ndim != 4 or labels.ndim != 3 or logits.shape[0] != labels.shape[0]:
+        raise ValueError("logits and labels have incompatible segmentation shapes")
+    valid = labels != 255
+    if not torch.any(valid):
+        raise ValueError("segmentation batch contains no trainable pixels")
+    safe_labels = labels.clamp(0, logits.shape[1] - 1)
+    log_probabilities = functional.log_softmax(logits, dim=1)
+    selected = log_probabilities.gather(1, safe_labels.unsqueeze(1)).squeeze(1)
+    return -(selected * valid.to(selected.dtype)).sum()
 
 
 def metrics_from_confusion(confusion: Tensor, loss: float) -> dict[str, object]:
