@@ -110,6 +110,14 @@ After exporting the completed 100-image task from CVAT, validate it on Dell with
 
 The reviewed output remains separate under `annotation_100_v1/reviewed_import/`. A validator PASS is not permission to merge the 20- and 100-image sets or start fine-tuning; inspect the generated overlays first.
 
+After explicit human approval of both reviewed bundles, run the gated 120-image SegFormer baseline on Dell:
+
+```bash
+./scripts/run_traversability_segformer_b0_v1.sh
+```
+
+The script rebuilds and validates `$HOME/datasets/generated/traversability_dataset_v1/approved_120_v1/` from approved normalized masks only, creates a deterministic ride-level split, and runs focused loader tests. A six-image CUDA overfit gate must pass before the unweighted full fine-tuning starts. Training artifacts are written outside Git under `$HOME/datasets/experiments/traversability_segformer_b0_v1/`; test metrics are evaluated once from the best validation checkpoint, and the portable offline overlays are in `full_training/review_bundle/`. This workflow does not integrate with the SDK, planner, controller, or live rover.
+
 ## Berkeley-FrodoBots-7K Probe
 
 Do not download the full Berkeley-FrodoBots-7K dataset during initial work. It is too large for local iteration.
