@@ -559,6 +559,9 @@ def validate_annotation_dataset(
     per_image: dict[str, dict[str, object]] = {}
     all_ignore: list[str] = []
     single_class: list[str] = []
+    missing_class_samples: dict[str, list[str]] = {
+        name: [] for name in EXPECTED_LABELS
+    }
     image_references: set[Path] = set()
     for row in rows:
         sample_id = row.get("sample_id", "")
@@ -589,6 +592,9 @@ def validate_annotation_dataset(
             metadata = json.loads((root / "metadata" / f"{sample_id}.json").read_text(encoding="utf-8"))
             if metadata.get("sample_id") != sample_id:
                 raise ValueError("JSON metadata sample_id differs")
+            for field in ("ride_id", "timestamp", "frame_id", "manifest_index", "playlist", "segment"):
+                if str(metadata.get(field, "")) != row[field]:
+                    raise ValueError(f"JSON metadata {field} differs")
             declared_mask = Path(row["mask_path"])
             mask_path = resolved_masks_dir / f"{sample_id}.png"
             if (
@@ -621,6 +627,9 @@ def validate_annotation_dataset(
                 all_ignore.append(sample_id)
             if len(present_ids) == 1:
                 single_class.append(sample_id)
+            for name, class_id in EXPECTED_LABELS.items():
+                if class_id not in image_counts:
+                    missing_class_samples[name].append(sample_id)
             per_image[sample_id] = {
                 "ride_id": row["ride_id"],
                 "timestamp": float(row["timestamp"]),
@@ -643,11 +652,15 @@ def validate_annotation_dataset(
     extra_masks = actual_masks - expected_masks
     if extra_masks:
         errors.append(f"unexpected mask files: {sorted(path.name for path in extra_masks)}")
+    images_dir = root / "images"
+    actual_images = set(path.resolve() for path in images_dir.iterdir() if path.is_file()) if images_dir.is_dir() else set()
+    extra_images = actual_images - image_references
+    if extra_images:
+        errors.append(f"unexpected image files: {sorted(path.name for path in extra_images)}")
     if require_masks and not errors:
-        if pixel_counts[EXPECTED_LABELS["ON_ROAD"]] == 0:
-            errors.append("ON_ROAD is absent from all masks")
-        if pixel_counts[EXPECTED_LABELS["OFF_ROAD"]] == 0:
-            errors.append("OFF_ROAD is absent from all masks")
+        for name in ("ON_ROAD", "OFF_ROAD", "OBSTACLE"):
+            if pixel_counts[EXPECTED_LABELS[name]] == 0:
+                errors.append(f"{name} is absent from all masks")
     total_pixels = sum(pixel_counts.values())
     class_pixel_counts = {
         name: pixel_counts[class_id]
@@ -668,9 +681,15 @@ def validate_annotation_dataset(
         "empty_mask_sample_ids": [],
         "all_ignore_sample_ids": all_ignore,
         "single_class_sample_ids": single_class,
+        "missing_class_sample_ids": missing_class_samples,
         "warnings": [
             *([f"all-IGNORE masks: {all_ignore}"] if all_ignore else []),
             *([f"single-class masks: {single_class}"] if single_class else []),
+            *(
+                f"{name} absent from {len(sample_ids)} masks: {sample_ids}"
+                for name, sample_ids in missing_class_samples.items()
+                if sample_ids
+            ),
         ],
         "errors": errors,
     }
@@ -719,6 +738,16 @@ def write_annotation_review_outputs(
             )
     _write_overlay_contact_sheet(rows, root, output)
     _write_annotation_review_html(rows, output, per_image)
+    write_json(
+        output / "class_statistics.json",
+        {
+            "class_pixel_counts": validation["class_pixel_counts"],
+            "class_pixel_fractions": validation["class_pixel_fractions"],
+            "missing_class_sample_ids": validation["missing_class_sample_ids"],
+            "all_ignore_sample_ids": validation["all_ignore_sample_ids"],
+            "single_class_sample_ids": validation["single_class_sample_ids"],
+        },
+    )
 
 
 def _write_overlay_contact_sheet(rows: list[dict[str, str]], root: Path, output: Path) -> None:

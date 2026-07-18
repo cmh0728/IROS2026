@@ -102,6 +102,14 @@ After explicit approval of the imported 20-image pilot, build the additional 100
 
 This performs bounded pseudo inference on 240 manifest samples for selection and seed drafts, not full-dataset inference. It excludes the approved pilot by provenance, time, and visual hash; caps each ride at five selected images; and writes the new bundle outside Git under `$HOME/datasets/generated/traversability_dataset_v1/annotation_100_v1/`. Stop after generation and annotate all 100 images manually before any training.
 
+After exporting the completed 100-image task from CVAT, validate it on Dell without touching the approved pilot:
+
+```bash
+./scripts/import_validate_traversability_annotation_100.sh
+```
+
+The reviewed output remains separate under `annotation_100_v1/reviewed_import/`. A validator PASS is not permission to merge the 20- and 100-image sets or start fine-tuning; inspect the generated overlays first.
+
 ## Berkeley-FrodoBots-7K Probe
 
 Do not download the full Berkeley-FrodoBots-7K dataset during initial work. It is too large for local iteration.

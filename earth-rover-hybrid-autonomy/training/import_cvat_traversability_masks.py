@@ -24,7 +24,11 @@ def main() -> int:
     parser.add_argument("--bundle", required=True)
     parser.add_argument("--cvat-export", required=True)
     parser.add_argument("--output-dir")
-    parser.add_argument("--expected-count", type=int, default=20)
+    parser.add_argument(
+        "--expected-count",
+        type=int,
+        help="Optional exact metadata and SegmentationClass mask count safety gate.",
+    )
     args = parser.parse_args()
     bundle = Path(args.bundle).expanduser().resolve()
     output = Path(args.output_dir).expanduser().resolve() if args.output_dir else bundle / "reviewed_import"
@@ -36,9 +40,10 @@ def main() -> int:
     )
     validation = validate_annotation_dataset(bundle, require_masks=True, masks_dir=output / "masks")
     report["validation"] = validation
-    write_annotation_review_outputs(bundle, output, validation)
     write_json(output / "import_report.json", report)
     write_json(output / "validation_report.json", validation)
+    if validation["valid"]:
+        write_annotation_review_outputs(bundle, output, validation)
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if validation["valid"] else 1
 

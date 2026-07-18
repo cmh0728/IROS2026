@@ -94,3 +94,11 @@ The workflow reuses the full manifest, lazy HLS decoder, conservative SegFormer 
 Selection excludes exact provenance matches, nearby timestamps, and visual near-duplicates of the approved 20 images. A 64-bit difference hash suppresses near-identical candidates, each ride is capped at five images, and selected timestamps from the same ride are separated by at least 10 seconds. Sky-dominant, severely blurred, low-information, and high-unknown-without-ground candidates are reported separately and do not count toward the 100 images.
 
 The default bundle is `$HOME/datasets/generated/traversability_dataset_v1/annotation_100_v1/`. It uses `trav_v1_add_#####` sample IDs so the approved `trav_v1_#####` pilot remains unchanged. `cvat_seed_annotations.zip` remains an unverified draft: old traversable maps to `ON_ROAD`, old non-traversable maps to `OBSTACLE`, old unknown maps to `IGNORE`, and `OFF_ROAD` is never auto-generated. Stop after bundle generation and complete all 100 annotations manually in CVAT.
+
+After exporting the completed 100-image CVAT task as `Segmentation Mask 1.1`, place it at `annotation_100_v1/traversability_annotation_100_reviewed.zip` and run on Dell:
+
+```bash
+./scripts/import_validate_traversability_annotation_100.sh
+```
+
+The script imports exactly 100 `SegmentationClass` masks by label name, writes normalized single-channel masks under `annotation_100_v1/reviewed_import/`, and preserves the approved 20-image pilot. It validates image-mask correspondence, dimensions, class IDs, CSV-to-JSON provenance, per-image missing-class warnings, and exact provenance overlap with the pilot. It also creates `overlay_contact_sheet.jpg`, `review.html`, `per_image_statistics.csv`, `class_statistics.json`, and `validation_report.json`. Do not merge or train until the 100-image overlays receive explicit human approval.

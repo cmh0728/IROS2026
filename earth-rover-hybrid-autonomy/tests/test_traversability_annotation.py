@@ -159,7 +159,7 @@ def test_validator_rejects_duplicate_source_metadata(tmp_path: Path) -> None:
     )
     cv2.imwrite(str(tmp_path / second["image_path"]), np.zeros((2, 2, 3), dtype=np.uint8))
     (tmp_path / "metadata/trav_v1_00001.json").write_text(
-        json.dumps({"sample_id": "trav_v1_00001"}), encoding="utf-8"
+        json.dumps(second), encoding="utf-8"
     )
     with (tmp_path / "metadata.csv").open("a", newline="", encoding="utf-8") as handle:
         csv.DictWriter(handle, fieldnames=second).writerow(second)
@@ -168,6 +168,56 @@ def test_validator_rejects_duplicate_source_metadata(tmp_path: Path) -> None:
 
     assert report["valid"] is False
     assert any("duplicate source frame metadata" in error for error in report["errors"])
+
+
+def test_validator_reports_missing_classes_per_image_as_warnings(tmp_path: Path) -> None:
+    first = write_annotation_bundle(tmp_path)
+    second = dict(first)
+    second.update(
+        {
+            "sample_id": "trav_v1_00001",
+            "image_path": "images/trav_v1_00001.jpg",
+            "mask_path": "masks/trav_v1_00001.png",
+            "frame_id": "5",
+            "manifest_index": "13",
+        }
+    )
+    cv2.imwrite(str(tmp_path / second["image_path"]), np.zeros((2, 2, 3), dtype=np.uint8))
+    (tmp_path / "metadata/trav_v1_00001.json").write_text(
+        json.dumps(second), encoding="utf-8"
+    )
+    with (tmp_path / "metadata.csv").open("a", newline="", encoding="utf-8") as handle:
+        csv.DictWriter(handle, fieldnames=second).writerow(second)
+    cv2.imwrite(
+        str(tmp_path / "masks/trav_v1_00000.png"),
+        np.array([[0, 1], [2, 2]], dtype=np.uint8),
+    )
+    cv2.imwrite(
+        str(tmp_path / "masks/trav_v1_00001.png"),
+        np.array([[0, 1], [2, 3]], dtype=np.uint8),
+    )
+
+    report = validate_annotation_dataset(tmp_path)
+
+    assert report["valid"] is True
+    assert report["missing_class_sample_ids"]["OBSTACLE"] == ["trav_v1_00000"]
+    assert any("OBSTACLE absent from 1 masks" in warning for warning in report["warnings"])
+    assert report["errors"] == []
+
+
+def test_validator_rejects_json_provenance_mismatch_and_unreferenced_image(tmp_path: Path) -> None:
+    write_annotation_bundle(tmp_path)
+    metadata_path = tmp_path / "metadata/trav_v1_00000.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["ride_id"] = "different"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    cv2.imwrite(str(tmp_path / "images/extra.jpg"), np.zeros((2, 2, 3), dtype=np.uint8))
+
+    report = validate_annotation_dataset(tmp_path, require_masks=False)
+
+    assert report["valid"] is False
+    assert any("JSON metadata ride_id differs" in error for error in report["errors"])
+    assert any("unexpected image files" in error for error in report["errors"])
 
 
 def test_import_cvat_color_mask_and_validate(tmp_path: Path) -> None:
@@ -188,6 +238,20 @@ def test_import_cvat_color_mask_and_validate(tmp_path: Path) -> None:
     assert validate_annotation_dataset(tmp_path, masks_dir=output / "masks")["valid"] is True
     assert cv2.imread(str(output / "masks/trav_v1_00000.png"), cv2.IMREAD_UNCHANGED).tolist() == [[0, 1], [2, 3]]
     assert (output / "mask_visualizations/trav_v1_00000.png").is_file()
+
+
+def test_import_enforces_explicit_expected_count(tmp_path: Path) -> None:
+    write_annotation_bundle(tmp_path)
+    export = tmp_path / "export.zip"
+    with zipfile.ZipFile(export, "w") as archive:
+        archive.writestr("labelmap.txt", ordered_labelmap())
+        archive.writestr(
+            "SegmentationClass/trav_v1_00000.png",
+            encode_png(np.array([[0, 1], [2, 3]], dtype=np.uint8)),
+        )
+
+    with pytest.raises(ValueError, match="expected 2 metadata rows"):
+        import_cvat_masks(tmp_path, export, tmp_path / "reviewed_import", expected_count=2)
 
 
 def test_reordered_labelmap_indices_are_mapped_by_name_and_background_is_ignore() -> None:
@@ -249,6 +313,7 @@ def test_review_outputs_include_statistics_contact_sheet_and_html(tmp_path: Path
     write_annotation_review_outputs(tmp_path, output, validation)
 
     assert (output / "per_image_statistics.csv").is_file()
+    assert (output / "class_statistics.json").is_file()
     assert (output / "overlay_contact_sheet.jpg").is_file()
     assert (output / "review.html").is_file()
     assert "trav_v1_00000" in (output / "review.html").read_text(encoding="utf-8")
@@ -285,9 +350,7 @@ def write_annotation_bundle(root: Path) -> dict[str, str]:
         "review_status": "NOT_ANNOTATED",
     }
     write_metadata_csv(root / "metadata.csv", row)
-    (root / "metadata/trav_v1_00000.json").write_text(
-        json.dumps({"sample_id": "trav_v1_00000"}), encoding="utf-8"
-    )
+    (root / "metadata/trav_v1_00000.json").write_text(json.dumps(row), encoding="utf-8")
     return row
 
 
