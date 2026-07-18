@@ -115,9 +115,11 @@ from pathlib import Path
 
 root = Path(sys.argv[1]).resolve()
 rows = list(csv.DictReader((root / "manifest.csv").open(newline="", encoding="utf-8")))
+metadata_rows = list(csv.DictReader((root / "metadata.csv").open(newline="", encoding="utf-8")))
 merge = json.loads((root / "merge_report.json").read_text(encoding="utf-8"))
 split = json.loads((root / "split_report.json").read_text(encoding="utf-8"))
 assert len(rows) == 120
+assert metadata_rows == rows
 assert len({row["sample_id"] for row in rows}) == 120
 assert len(list((root / "images").iterdir())) == 120
 assert len(list((root / "masks").glob("*.png"))) == 120

@@ -147,9 +147,7 @@ def main() -> int:
         merged_rows.append(merged)
         write_json(output / "metadata" / f"{sample_id}.json", merged)
 
-    _write_csv(output / "manifest.csv", merged_rows)
-    for split_name in ("train", "validation", "test"):
-        _write_csv(output / "splits" / f"{split_name}.csv", [row for row in merged_rows if row["split"] == split_name])
+    _write_dataset_manifests(output, merged_rows)
 
     validation = validate_annotation_dataset(output, masks_dir=output / "masks")
     if not validation["valid"] or validation["validated_mask_count"] != 120:
@@ -203,6 +201,16 @@ def _write_csv(path: Path, rows: list[dict[str, str]]) -> None:
         writer = csv.DictWriter(handle, fieldnames=FIELDS)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _write_dataset_manifests(output: Path, rows: list[dict[str, str]]) -> None:
+    _write_csv(output / "metadata.csv", rows)
+    _write_csv(output / "manifest.csv", rows)
+    for split_name in ("train", "validation", "test"):
+        _write_csv(
+            output / "splits" / f"{split_name}.csv",
+            [row for row in rows if row["split"] == split_name],
+        )
 
 
 def _dataset_statistics(rows: list[dict[str, str]], per_image: dict[str, object]) -> dict[str, object]:

@@ -8,6 +8,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
+from training.build_approved_traversability_dataset_v1 import FIELDS, _write_dataset_manifests
 from training.datasets.traversability_dataset_v1 import (
     TraversabilityDataset,
     choose_ride_split,
@@ -58,6 +59,22 @@ def test_dataset_shapes_dtypes_and_batch_collation(tmp_path: Path) -> None:
     assert set(item["labels"].unique().tolist()).issubset({0, 1, 2, 255})
     assert batch["pixel_values"].shape == (2, 3, 32, 32)
     assert batch["labels"].shape == (2, 32, 32)
+
+
+def test_approved_dataset_writes_validator_metadata_and_split_manifests(tmp_path: Path) -> None:
+    (tmp_path / "splits").mkdir()
+    row = {field: "value" for field in FIELDS}
+    row.update({"sample_id": "sample", "split": "train"})
+
+    _write_dataset_manifests(tmp_path, [row])
+
+    assert (tmp_path / "metadata.csv").read_text(encoding="utf-8") == (
+        tmp_path / "manifest.csv"
+    ).read_text(encoding="utf-8")
+    train_rows = list(csv.DictReader((tmp_path / "splits/train.csv").open(newline="", encoding="utf-8")))
+    assert train_rows == [row]
+    assert list(csv.DictReader((tmp_path / "splits/validation.csv").open(newline="", encoding="utf-8"))) == []
+    assert list(csv.DictReader((tmp_path / "splits/test.csv").open(newline="", encoding="utf-8"))) == []
 
 
 def test_ride_split_is_deterministic_and_has_no_overlap() -> None:
