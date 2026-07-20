@@ -37,6 +37,14 @@ ANNOTATION_FIELDS = (
     "angular",
     "scene_categories",
     "scene_category_source",
+    "scene_category_suggestion",
+    "candidate_reason",
+    "candidate_split",
+    "prediction_on_road_ratio",
+    "prediction_off_road_ratio",
+    "prediction_obstacle_ratio",
+    "mean_confidence",
+    "confidence_path",
     "review_status",
 )
 
@@ -89,6 +97,7 @@ class AnnotationCandidate:
     angular: float
     scene_categories: tuple[str, ...]
     category_evidence: dict[str, object]
+    annotation_metadata: dict[str, str] | None = None
 
 
 def load_annotation_candidates(bundle_root: str | Path) -> list[AnnotationCandidate]:
@@ -255,6 +264,7 @@ def build_annotation_bundle(
     seed: int,
     minimum_separation_seconds: float,
     sample_id_prefix: str = "trav_v1_",
+    seed_mask_contract: str = "legacy_pseudo",
 ) -> dict[str, object]:
     root = Path(output_dir).expanduser().resolve()
     if root.exists() and any(root.iterdir()):
@@ -273,7 +283,7 @@ def build_annotation_bundle(
         image_relative = f"images/{sample_id}{image_suffix}"
         shutil.copy2(candidate.image_path, root / image_relative)
         initial_relative = f"initial_masks/{sample_id}.png"
-        convert_pseudo_seed(candidate.pseudo_mask_path, root / initial_relative)
+        prepare_seed_mask(candidate.pseudo_mask_path, root / initial_relative, seed_mask_contract)
         entry = {
             "sample_id": sample_id,
             "image_path": image_relative,
@@ -290,8 +300,21 @@ def build_annotation_bundle(
             "angular": f"{candidate.angular:.6f}",
             "scene_categories": "|".join(candidate.scene_categories),
             "scene_category_source": "semantic_pseudo_label_and_image_heuristics_unverified",
+            "scene_category_suggestion": "",
+            "candidate_reason": "",
+            "candidate_split": "",
+            "prediction_on_road_ratio": "",
+            "prediction_off_road_ratio": "",
+            "prediction_obstacle_ratio": "",
+            "mean_confidence": "",
+            "confidence_path": "",
             "review_status": "NOT_ANNOTATED",
         }
+        if candidate.annotation_metadata:
+            unknown = set(candidate.annotation_metadata) - set(ANNOTATION_FIELDS)
+            if unknown:
+                raise ValueError(f"unsupported annotation metadata fields: {sorted(unknown)}")
+            entry.update(candidate.annotation_metadata)
         entries.append(entry)
         write_json(
             root / "metadata" / f"{sample_id}.json",
@@ -299,12 +322,7 @@ def build_annotation_bundle(
                 **entry,
                 "scene_category_evidence": candidate.category_evidence,
                 "initial_mask_path": initial_relative,
-                "initial_mask_mapping": {
-                    "old_0_NON_TRAVERSABLE": "3_OBSTACLE",
-                    "old_1_TRAVERSABLE": "1_ON_ROAD",
-                    "old_2_UNKNOWN_OR_IGNORE": "0_IGNORE",
-                    "OFF_ROAD": "never_auto_seeded",
-                },
+                "initial_mask_mapping": _seed_mapping(seed_mask_contract),
                 "pseudo_label_is_ground_truth": False,
             },
         )
@@ -321,7 +339,7 @@ def build_annotation_bundle(
         "pipeline_status": "HUMAN_ANNOTATION_REQUIRED",
         "dataset_name": "traversability_dataset_v1",
         "source_pseudo_bundle": str(Path(source_bundle).expanduser().resolve()),
-        "source_candidate_count": _count_csv_rows(Path(source_bundle).expanduser().resolve() / "review.csv"),
+        "source_candidate_count": _source_candidate_count(Path(source_bundle).expanduser().resolve(), len(selected)),
         "selected_sample_count": len(entries),
         "processed_ride_count": len({entry["ride_id"] for entry in entries}),
         "ride_distribution": dict(sorted(Counter(entry["ride_id"] for entry in entries).items())),
@@ -335,6 +353,7 @@ def build_annotation_bundle(
         "live_rover_commands_sent": False,
         "annotation_tool": "CVAT Segmentation Mask 1.1",
         "initial_masks_are_unverified": True,
+        "seed_mask_contract": seed_mask_contract,
     }
     write_json(root / "build_report.json", report)
     return report
@@ -352,6 +371,45 @@ def convert_pseudo_seed(source: Path, destination: Path) -> None:
     converted[mask == 1] = 1
     if not cv2.imwrite(str(destination), converted):
         raise OSError(f"cannot write initial mask: {destination}")
+
+
+def prepare_seed_mask(source: Path, destination: Path, contract: str) -> None:
+    if contract == "legacy_pseudo":
+        convert_pseudo_seed(source, destination)
+        return
+    if contract != "v1_source":
+        raise ValueError(f"unsupported seed mask contract: {contract}")
+    mask = cv2.imread(str(source), cv2.IMREAD_UNCHANGED)
+    if mask is None or mask.ndim != 2 or mask.dtype != np.uint8:
+        raise ValueError(f"v1 seed mask must be a single-channel uint8 PNG: {source}")
+    values = set(int(value) for value in np.unique(mask))
+    if not values.issubset({0, 1, 2, 3}):
+        raise ValueError(f"v1 seed mask contains unsupported IDs: {sorted(values)}")
+    if not cv2.imwrite(str(destination), mask):
+        raise OSError(f"cannot write v1 initial mask: {destination}")
+
+
+def _seed_mapping(contract: str) -> dict[str, str]:
+    if contract == "legacy_pseudo":
+        return {
+            "old_0_NON_TRAVERSABLE": "3_OBSTACLE",
+            "old_1_TRAVERSABLE": "1_ON_ROAD",
+            "old_2_UNKNOWN_OR_IGNORE": "0_IGNORE",
+            "OFF_ROAD": "never_auto_seeded",
+        }
+    if contract == "v1_source":
+        return {
+            "0_IGNORE": "0_IGNORE",
+            "1_ON_ROAD": "1_ON_ROAD",
+            "2_OFF_ROAD": "2_OFF_ROAD",
+            "3_OBSTACLE": "3_OBSTACLE",
+        }
+    raise ValueError(f"unsupported seed mask contract: {contract}")
+
+
+def _source_candidate_count(root: Path, fallback: int) -> int:
+    review = root / "review.csv"
+    return _count_csv_rows(review) if review.is_file() else fallback
 
 
 def import_cvat_masks(
@@ -553,7 +611,7 @@ def validate_annotation_dataset(
     allowed_ids = set(name_to_id.values())
     errors: list[str] = []
     seen: set[str] = set()
-    seen_sources: set[tuple[str, str]] = set()
+    seen_sources: set[tuple[str, str, int]] = set()
     expected_masks: set[Path] = set()
     pixel_counts: Counter[int] = Counter()
     per_image: dict[str, dict[str, object]] = {}
@@ -576,7 +634,11 @@ def validate_annotation_dataset(
             float(row["timestamp"])
             int(row["frame_id"])
             int(row["manifest_index"])
-            source_key = (row["ride_id"], row["manifest_index"])
+            source_key = (
+                row["ride_id"],
+                row["frame_id"],
+                round(float(row["timestamp"]) * 1000),
+            )
             if source_key in seen_sources:
                 raise ValueError(f"duplicate source frame metadata: {source_key}")
             seen_sources.add(source_key)
