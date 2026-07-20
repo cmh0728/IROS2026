@@ -117,10 +117,8 @@ class TraversabilityDataset(Dataset[dict[str, object]]):
             image_rgb = np.clip(image_rgb.astype(np.float32) * alpha + beta, 0, 255).astype(np.uint8)
 
         target = source_mask_to_training(source_mask)
-        image = image_rgb.astype(np.float32) / 255.0
-        image = (image - IMAGE_MEAN) / IMAGE_STD
         return {
-            "pixel_values": torch.from_numpy(image.transpose(2, 0, 1)).to(torch.float32),
+            "pixel_values": image_rgb_to_tensor(image_rgb),
             "labels": torch.from_numpy(target.astype(np.int64)),
             "sample_id": sample.sample_id,
             "ride_id": sample.ride_id,
@@ -145,22 +143,55 @@ def training_prediction_to_source(prediction: np.ndarray) -> np.ndarray:
     return TRAINING_TO_SOURCE[prediction]
 
 
+def image_rgb_to_tensor(image_rgb: np.ndarray) -> Tensor:
+    if image_rgb.ndim != 3 or image_rgb.shape[2] != 3:
+        raise ValueError(f"expected HxWx3 RGB image, got {image_rgb.shape}")
+    image = image_rgb.astype(np.float32) / 255.0
+    image = (image - IMAGE_MEAN) / IMAGE_STD
+    return torch.from_numpy(np.ascontiguousarray(image.transpose(2, 0, 1))).to(torch.float32)
+
+
+def letterbox_image(image_rgb: np.ndarray, size: int) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+    if image_rgb.ndim != 3 or image_rgb.shape[2] != 3:
+        raise ValueError(f"expected HxWx3 RGB image, got {image_rgb.shape}")
+    if size <= 0:
+        raise ValueError("letterbox size must be positive")
+    height, width = image_rgb.shape[:2]
+    scale = min(size / width, size / height)
+    resized_width = max(1, round(width * scale))
+    resized_height = max(1, round(height * scale))
+    resized = cv2.resize(image_rgb, (resized_width, resized_height), interpolation=cv2.INTER_LINEAR)
+    canvas = np.zeros((size, size, 3), dtype=np.uint8)
+    left = (size - resized_width) // 2
+    top = (size - resized_height) // 2
+    canvas[top : top + resized_height, left : left + resized_width] = resized
+    return canvas, (left, top, resized_width, resized_height)
+
+
+def restore_letterbox(
+    array: np.ndarray,
+    original_size: tuple[int, int],
+    interpolation: int,
+) -> np.ndarray:
+    original_height, original_width = original_size
+    size = array.shape[0]
+    scale = min(size / original_width, size / original_height)
+    resized_width = max(1, round(original_width * scale))
+    resized_height = max(1, round(original_height * scale))
+    left = (size - resized_width) // 2
+    top = (size - resized_height) // 2
+    cropped = array[top : top + resized_height, left : left + resized_width]
+    return cv2.resize(cropped, (original_width, original_height), interpolation=interpolation)
+
+
 def letterbox_image_and_mask(
     image_rgb: np.ndarray,
     source_mask: np.ndarray,
     size: int,
 ) -> tuple[np.ndarray, np.ndarray]:
-    height, width = image_rgb.shape[:2]
-    scale = min(size / width, size / height)
-    resized_width = max(1, round(width * scale))
-    resized_height = max(1, round(height * scale))
-    image_resized = cv2.resize(image_rgb, (resized_width, resized_height), interpolation=cv2.INTER_LINEAR)
+    image_canvas, (left, top, resized_width, resized_height) = letterbox_image(image_rgb, size)
     mask_resized = cv2.resize(source_mask, (resized_width, resized_height), interpolation=cv2.INTER_NEAREST)
-    image_canvas = np.zeros((size, size, 3), dtype=np.uint8)
     mask_canvas = np.zeros((size, size), dtype=np.uint8)
-    left = (size - resized_width) // 2
-    top = (size - resized_height) // 2
-    image_canvas[top : top + resized_height, left : left + resized_width] = image_resized
     mask_canvas[top : top + resized_height, left : left + resized_width] = mask_resized
     return image_canvas, mask_canvas
 

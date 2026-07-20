@@ -58,6 +58,10 @@ After the tiny-overfit gate passes, run the bounded 10/2/2 ride-level baseline:
 
 The run uses at most 250 samples per ride, selects the best checkpoint by validation macro F1, evaluates the held-out test rides once, and writes `held_out_test_predictions.mp4` with ground truth, prediction, confidence, and control overlays. Metrics, the exact ride split, class distributions, and confusion matrices are stored in `small_baseline_report.json` under `/home/asl/datasets/outputs/frodobots_2k_phase3/small_baseline/`.
 
+## Traversability temporal review
+
+After the approved SegFormer-B0 static-image baseline, run `scripts/run_traversability_temporal_inference_v1.sh` on Dell. It selects three deterministic 30-second segments from rides absent from the complete approved 120-image split, then writes raw prediction/confidence videos, per-frame statistics, anomaly candidates, latency/FPS/VRAM metrics, and a portable `review.html` bundle. It does not smooth predictions, threshold confidence, train the model, or connect to rover control.
+
 ## Traversability Pseudo-Label Pilot
 
 The action baseline remains unchanged. Traversability pseudo-labeling is a separate research-only workflow using `nvidia/segformer-b0-finetuned-ade-512-512` as an annotation draft, never as verified ground truth or a rover controller.

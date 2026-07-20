@@ -1,0 +1,16 @@
+experiment_name: traversability_temporal_inference_v1
+seed: 20260720
+ride_count: 3
+segment_duration_seconds: 30.0
+maximum_manifest_gap_seconds: 2.0
+maximum_raw_frame_gap_seconds: 0.15
+image_size: 512
+review_panel_width: 640
+maximum_anomaly_images: 60
+anomaly_review_heuristics:
+  pixel_flicker_fraction: 0.18
+  class_ratio_l1_change: 0.20
+  mean_confidence_drop: 0.12
+  low_mean_confidence: 0.45
+  dominant_class_fraction: 0.98
+  obstacle_fraction_drop: 0.08

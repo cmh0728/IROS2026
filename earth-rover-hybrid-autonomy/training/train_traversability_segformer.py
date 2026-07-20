@@ -34,6 +34,7 @@ from training.datasets.traversability_dataset_v1 import (
     TRAINING_CLASS_NAMES,
     TraversabilityDataset,
     manifest_sha256,
+    restore_letterbox,
     training_prediction_to_source,
 )
 from training.models.traversability_segformer import (
@@ -418,12 +419,12 @@ def write_prediction_review(
             ground_source = cv2.imread(batch["mask_path"][index], cv2.IMREAD_UNCHANGED)
             if image_bgr is None or ground_source is None:
                 raise OSError(f"cannot reload approved source assets for {sample_id}")
-            prediction_source = _restore_letterbox(
+            prediction_source = restore_letterbox(
                 prediction_source,
                 image_bgr.shape[:2],
                 cv2.INTER_NEAREST,
             )
-            confidence_image = _restore_letterbox(
+            confidence_image = restore_letterbox(
                 confidence_image,
                 image_bgr.shape[:2],
                 cv2.INTER_LINEAR,
@@ -520,18 +521,6 @@ def _loader(dataset: object, batch_size: int, shuffle: bool, seed: int) -> DataL
 
 def _full_resolution_logits(logits: Tensor, size: tuple[int, int]) -> Tensor:
     return functional.interpolate(logits, size=size, mode="bilinear", align_corners=False)
-
-
-def _restore_letterbox(array: np.ndarray, original_size: tuple[int, int], interpolation: int) -> np.ndarray:
-    original_height, original_width = original_size
-    size = array.shape[0]
-    scale = min(size / original_width, size / original_height)
-    resized_width = max(1, round(original_width * scale))
-    resized_height = max(1, round(original_height * scale))
-    left = (size - resized_width) // 2
-    top = (size - resized_height) // 2
-    cropped = array[top : top + resized_height, left : left + resized_width]
-    return cv2.resize(cropped, (original_width, original_height), interpolation=interpolation)
 
 
 def _colorize_source_mask(mask: np.ndarray) -> np.ndarray:
