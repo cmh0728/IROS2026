@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATASET_ROOT="${DATASET_ROOT:-$HOME/datasets/output_rides_0}"
-TEMPORAL_BUNDLE="${TEMPORAL_BUNDLE:-$HOME/datasets/review_bundles/traversability_temporal_v1}"
+TEMPORAL_BUNDLES="${TEMPORAL_BUNDLES:-${TEMPORAL_BUNDLE:-$HOME/datasets/review_bundles/traversability_temporal_v1}}"
 APPROVED_DATASET="${APPROVED_DATASET:-$HOME/datasets/generated/traversability_dataset_v1/approved_120_v1}"
 CHECKPOINT="${CHECKPOINT:-$HOME/datasets/experiments/traversability_segformer_b0_v1/full_training/segformer_b0_best.pt}"
 OUTPUT_DIR="${OUTPUT_DIR:-$HOME/datasets/generated/traversability_dataset_v2/hard_examples_annotation_v1}"
@@ -21,17 +21,26 @@ else
     exit 1
 fi
 
-for path in "$DATASET_ROOT" "$TEMPORAL_BUNDLE" "$APPROVED_DATASET"; do
+IFS=':' read -r -a temporal_bundle_paths <<< "$TEMPORAL_BUNDLES"
+for path in "$DATASET_ROOT" "$APPROVED_DATASET" "${temporal_bundle_paths[@]}"; do
     if [[ ! -d "$path" ]]; then
         echo "ERROR: Required Dell directory is missing: $path" >&2
         exit 1
     fi
 done
-for path in "$TEMPORAL_BUNDLE/per_frame_statistics.csv" "$TEMPORAL_BUNDLE/temporal_inference_report.json" "$APPROVED_DATASET/metadata.csv" "$CHECKPOINT"; do
+for path in "$APPROVED_DATASET/metadata.csv" "$CHECKPOINT"; do
     if [[ ! -f "$path" ]]; then
         echo "ERROR: Required input is missing: $path" >&2
         exit 1
     fi
+done
+for path in "${temporal_bundle_paths[@]}"; do
+    for required in "$path/per_frame_statistics.csv" "$path/temporal_inference_report.json"; do
+        if [[ ! -f "$required" ]]; then
+            echo "ERROR: Required temporal input is missing: $required" >&2
+            exit 1
+        fi
+    done
 done
 if [[ -d "$OUTPUT_DIR" && -n "$(find "$OUTPUT_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
     echo "ERROR: Output is not empty; preserve it and choose a new OUTPUT_DIR: $OUTPUT_DIR" >&2
@@ -73,12 +82,16 @@ if not torch.cuda.is_available():
 print(f"CUDA device: {torch.cuda.get_device_name(0)}")
 PY
 before_raw="$(tree_fingerprint "$DATASET_ROOT")"
-before_temporal="$(tree_fingerprint "$TEMPORAL_BUNDLE")"
+before_temporal="$(for path in "${temporal_bundle_paths[@]}"; do tree_fingerprint "$path"; done)"
 before_approved="$(tree_fingerprint "$APPROVED_DATASET")"
 before_checkpoint="$(sha256sum "$CHECKPOINT" | awk '{print $1}')"
 
 echo "[3/6] Mining v1 temporal errors and building the 60-image CVAT bundle"
-PYTHONDONTWRITEBYTECODE=1 "$PYTHON" training/build_traversability_hard_examples.py --dataset-root "$DATASET_ROOT" --temporal-bundle "$TEMPORAL_BUNDLE" --approved-dataset "$APPROVED_DATASET" --checkpoint "$CHECKPOINT" --output-dir "$OUTPUT_DIR" --sample-count "$SAMPLE_COUNT" --seed "$SEED" --require-cuda
+temporal_args=()
+for path in "${temporal_bundle_paths[@]}"; do
+    temporal_args+=(--temporal-bundle "$path")
+done
+PYTHONDONTWRITEBYTECODE=1 "$PYTHON" training/build_traversability_hard_examples.py --dataset-root "$DATASET_ROOT" "${temporal_args[@]}" --approved-dataset "$APPROVED_DATASET" --checkpoint "$CHECKPOINT" --output-dir "$OUTPUT_DIR" --sample-count "$SAMPLE_COUNT" --seed "$SEED" --require-cuda
 
 echo "[4/6] Validating count, provenance, split isolation, and v1 seed masks"
 "$PYTHON" - "$OUTPUT_DIR" "$APPROVED_DATASET" "$SAMPLE_COUNT" <<'PY'
@@ -159,7 +172,7 @@ PY
 
 echo "[5/6] Verifying immutable sources and Git exclusion"
 after_raw="$(tree_fingerprint "$DATASET_ROOT")"
-after_temporal="$(tree_fingerprint "$TEMPORAL_BUNDLE")"
+after_temporal="$(for path in "${temporal_bundle_paths[@]}"; do tree_fingerprint "$path"; done)"
 after_approved="$(tree_fingerprint "$APPROVED_DATASET")"
 after_checkpoint="$(sha256sum "$CHECKPOINT" | awk '{print $1}')"
 after_git_status="$(git status --porcelain)"

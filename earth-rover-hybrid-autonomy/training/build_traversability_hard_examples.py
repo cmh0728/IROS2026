@@ -46,14 +46,14 @@ from training.traversability_review import colorize_mask, label_contract, write_
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a targeted v1 hard-example CVAT bundle.")
     parser.add_argument("--dataset-root", required=True)
-    parser.add_argument("--temporal-bundle", required=True)
+    parser.add_argument("--temporal-bundle", action="append", required=True)
     parser.add_argument("--approved-dataset", required=True)
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--label-contract", default=str(ROOT / "configs/traversability_dataset_v1.yaml"))
     parser.add_argument("--sample-count", type=int, default=60)
     parser.add_argument("--minimum-per-category", type=int, default=12)
-    parser.add_argument("--prefilter-count", type=int, default=360)
+    parser.add_argument("--prefilter-count", type=int, default=720)
     parser.add_argument("--prefilter-separation-seconds", type=float, default=0.20)
     parser.add_argument("--selection-separation-seconds", type=float, default=0.75)
     parser.add_argument("--maximum-per-ride", type=int, default=24)
@@ -67,27 +67,37 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     dataset_root = Path(args.dataset_root).expanduser().resolve()
-    temporal = Path(args.temporal_bundle).expanduser().resolve()
+    temporal_bundles = [Path(value).expanduser().resolve() for value in args.temporal_bundle]
     approved = Path(args.approved_dataset).expanduser().resolve()
     checkpoint_path = Path(args.checkpoint).expanduser().resolve()
     output = Path(args.output_dir).expanduser().resolve()
     contract = Path(args.label_contract).expanduser().resolve()
-    for path in (dataset_root, temporal, approved, checkpoint_path, contract):
+    for path in (dataset_root, *temporal_bundles, approved, checkpoint_path, contract):
         if not path.exists():
             raise SystemExit(f"required input does not exist: {path}")
     if output.exists() and any(output.iterdir()):
         raise SystemExit(f"output directory is not empty: {output}")
     if output == dataset_root or dataset_root in output.parents:
         raise SystemExit("output directory must remain outside the immutable raw dataset")
-    statistics_path = temporal / "per_frame_statistics.csv"
-    report_path = temporal / "temporal_inference_report.json"
-    if not statistics_path.is_file() or not report_path.is_file():
-        raise SystemExit("temporal bundle is missing per-frame statistics or its report")
-    temporal_report = json.loads(report_path.read_text(encoding="utf-8"))
-    if temporal_report.get("success") is not True or temporal_report.get("approved_ride_overlap") != []:
-        raise SystemExit("temporal source did not pass its unseen-ride gate")
-
-    rows = list(csv.DictReader(statistics_path.open(newline="", encoding="utf-8")))
+    rows: list[dict[str, str]] = []
+    temporal_ride_sets: list[set[str]] = []
+    for temporal in temporal_bundles:
+        statistics_path = temporal / "per_frame_statistics.csv"
+        report_path = temporal / "temporal_inference_report.json"
+        if not statistics_path.is_file() or not report_path.is_file():
+            raise SystemExit(f"temporal bundle is incomplete: {temporal}")
+        temporal_report = json.loads(report_path.read_text(encoding="utf-8"))
+        if temporal_report.get("success") is not True or temporal_report.get("approved_ride_overlap") != []:
+            raise SystemExit(f"temporal source did not pass its unseen-ride gate: {temporal}")
+        bundle_rows = list(csv.DictReader(statistics_path.open(newline="", encoding="utf-8")))
+        rows.extend(bundle_rows)
+        temporal_ride_sets.append({row["ride_id"] for row in bundle_rows if row.get("status") == "OK"})
+    if any(
+        left & right
+        for index, left in enumerate(temporal_ride_sets)
+        for right in temporal_ride_sets[index + 1 :]
+    ):
+        raise SystemExit("temporal bundles contain overlapping rides")
     prefiltered = temporal_prefilter(
         rows,
         args.prefilter_separation_seconds,
@@ -240,7 +250,7 @@ def main() -> int:
         selected,
         output,
         contract,
-        temporal,
+        temporal_bundles[0],
         args.seed,
         args.selection_separation_seconds,
         sample_id_prefix="trav_v2_hard_",
@@ -250,7 +260,7 @@ def main() -> int:
         {
             "dataset_name": "traversability_dataset_v2_hard_examples_annotation_v1",
             "source_model_checkpoint": str(checkpoint_path),
-            "source_temporal_bundle": str(temporal),
+            "source_temporal_bundles": [str(path) for path in temporal_bundles],
             "temporal_prefilter_count": len(prefiltered),
             "inferred_candidate_count": len(inferred),
             "selected_sample_count": len(selected),
