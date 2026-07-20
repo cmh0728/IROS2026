@@ -312,12 +312,18 @@ def select_hard_examples(
             )[:12]
         ],
     }
-    report["ready_for_annotation_bundle"] = (
+    category_target_fulfilled = (
         len(selected) == requested_count
         and all(category_counts[name] == target for name, target in category_targets.items())
+    )
+    partial_bundle_allowed = (
+        bool(selected)
         and bool(split_rides["hard_train_candidates"])
         and bool(split_rides["hard_validation_candidates"])
     )
+    report["category_target_fulfilled"] = category_target_fulfilled
+    report["partial_bundle_allowed"] = partial_bundle_allowed
+    report["ready_for_annotation_bundle"] = partial_bundle_allowed
     return with_splits, report
 
 

@@ -7,7 +7,7 @@ TEMPORAL_BUNDLE="${TEMPORAL_BUNDLE:-$HOME/datasets/review_bundles/traversability
 APPROVED_DATASET="${APPROVED_DATASET:-$HOME/datasets/generated/traversability_dataset_v1/approved_120_v1}"
 CHECKPOINT="${CHECKPOINT:-$HOME/datasets/experiments/traversability_segformer_b0_v1/full_training/segformer_b0_best.pt}"
 OUTPUT_DIR="${OUTPUT_DIR:-$HOME/datasets/generated/traversability_dataset_v2/hard_examples_annotation_v1}"
-EXPECTED_COUNT=24
+TARGET_COUNT=24
 SEED="${SEED:-20260721}"
 export HF_HOME="${HF_HOME:-$HOME/datasets/generated/huggingface}"
 export CUBLAS_WORKSPACE_CONFIG="${CUBLAS_WORKSPACE_CONFIG:-:4096:8}"
@@ -81,7 +81,7 @@ echo "[3/6] Mining v1 temporal errors and building the targeted 24-image CVAT bu
 PYTHONDONTWRITEBYTECODE=1 "$PYTHON" training/build_traversability_hard_examples.py --dataset-root "$DATASET_ROOT" --temporal-bundle "$TEMPORAL_BUNDLE" --approved-dataset "$APPROVED_DATASET" --checkpoint "$CHECKPOINT" --output-dir "$OUTPUT_DIR" --seed "$SEED" --require-cuda
 
 echo "[4/6] Validating count, provenance, split isolation, and v1 seed masks"
-"$PYTHON" - "$OUTPUT_DIR" "$APPROVED_DATASET" "$EXPECTED_COUNT" <<'PY'
+"$PYTHON" - "$OUTPUT_DIR" "$APPROVED_DATASET" "$TARGET_COUNT" <<'PY'
 import csv
 import json
 import sys
@@ -92,18 +92,20 @@ import numpy as np
 
 root = Path(sys.argv[1]).resolve()
 approved = Path(sys.argv[2]).resolve()
-expected = int(sys.argv[3])
+target_count = int(sys.argv[3])
 rows = list(csv.DictReader((root / "metadata.csv").open(newline="", encoding="utf-8")))
 selection = json.loads((root / "selection_report.json").read_text(encoding="utf-8"))
 build = json.loads((root / "build_report.json").read_text(encoding="utf-8"))
-assert len(rows) == expected
-assert len({row["sample_id"] for row in rows}) == expected
-assert len({(row["ride_id"], row["frame_id"], row["timestamp"]) for row in rows}) == expected
-assert len(list((root / "images").glob("*"))) == expected
-assert len(list((root / "initial_masks").glob("*.png"))) == expected
-assert len(list((root / "metadata").glob("*.json"))) == expected
-assert len(list((root / "context").glob("*.jpg"))) == expected
-assert len(list((root / "confidence").glob("*.png"))) == expected
+actual = selection["selected_sample_count"]
+assert 0 < actual <= target_count
+assert len(rows) == actual
+assert len({row["sample_id"] for row in rows}) == actual
+assert len({(row["ride_id"], row["frame_id"], row["timestamp"]) for row in rows}) == actual
+assert len(list((root / "images").glob("*"))) == actual
+assert len(list((root / "initial_masks").glob("*.png"))) == actual
+assert len(list((root / "metadata").glob("*.json"))) == actual
+assert len(list((root / "context").glob("*.jpg"))) == actual
+assert len(list((root / "confidence").glob("*.png"))) == actual
 assert build["seed_mask_contract"] == "v1_source"
 assert build["additional_training_performed"] is False
 assert build["planner_or_live_rover_integration_performed"] is False
@@ -111,14 +113,19 @@ assert selection["ready_for_annotation_bundle"] is True
 assert selection["approved_ride_overlap"] == []
 assert selection["ride_leakage"] == []
 assert selection["approved_exact_overlap_count"] == 0
-assert sum(selection["split_sample_counts"].values()) == expected
+assert sum(selection["split_sample_counts"].values()) == actual
 assert selection["minimum_selected_hash_distance"] > selection["hash_distance_threshold"]
 assert selection["minimum_same_ride_time_delta_seconds"] >= selection["minimum_separation_seconds"]
-assert selection["category_distribution"] == {
+assert selection["category_targets"] == {
     "CURB_HARD_NEGATIVE": 12,
     "TRUE_OFF_ROAD": 6,
     "PAVED_HARD_CASE": 6,
 }
+assert all(
+    selection["category_distribution"][name] + selection["category_shortfalls"][name] == target
+    for name, target in selection["category_targets"].items()
+)
+assert build["category_target_fulfilled"] == selection["category_target_fulfilled"]
 train_rides = set(selection["split_rides"]["hard_train_candidates"])
 validation_rides = set(selection["split_rides"]["hard_validation_candidates"])
 assert train_rides and validation_rides and not train_rides & validation_rides
@@ -147,12 +154,14 @@ for row in rows:
         for item in metadata["context_frames"]
     )
 with zipfile.ZipFile(root / "cvat_seed_annotations.zip") as archive:
-    assert len([name for name in archive.namelist() if name.startswith("SegmentationClass/")]) == expected
+    assert len([name for name in archive.namelist() if name.startswith("SegmentationClass/")]) == actual
 for name in ("contact_sheet.jpg", "review.html", "README.md", "cvat_labelmap.txt", "selection_report.json"):
     assert (root / name).is_file() and (root / name).stat().st_size > 0
 print(f"Selected frames: {len(rows)}")
 print(f"Candidates: prefilter={selection['temporal_prefilter_count']} inferred={selection['inferred_candidate_count']}")
 print(f"Categories: {selection['category_distribution']}")
+print(f"Category shortfalls: {selection['category_shortfalls']}")
+print(f"Full 24-image target: {selection['category_target_fulfilled']}")
 print(f"Rides: {selection['ride_distribution']}")
 print(f"Splits: {selection['split_rides']}")
 print(f"Split samples: {selection['split_sample_counts']}")

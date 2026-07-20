@@ -216,10 +216,11 @@ def main() -> int:
             "existing_v1_test_reused_for_tuning": False,
         }
     )
-    if not selection["ready_for_annotation_bundle"]:
-        failure_report = output.parent / f"{output.name}_candidate_shortfall.json"
-        write_json(failure_report, selection)
-        raise SystemExit(f"insufficient relevant candidates; inspect {failure_report}")
+    shortfall_report = output.parent / f"{output.name}_candidate_shortfall.json"
+    if not selection["category_target_fulfilled"] or not selection["partial_bundle_allowed"]:
+        write_json(shortfall_report, selection)
+    if not selection["partial_bundle_allowed"]:
+        raise SystemExit(f"insufficient relevant candidates; inspect {shortfall_report}")
     if selection["approved_ride_overlap"]:
         raise SystemExit("selected hard-example rides overlap approved_120_v1 rides")
 
@@ -252,6 +253,9 @@ def main() -> int:
             "temporal_prefilter_count": len(prefiltered),
             "inferred_candidate_count": len(inferred),
             "selected_sample_count": len(selected),
+            "requested_category_targets": HARD_CATEGORY_TARGETS,
+            "category_target_fulfilled": selection["category_target_fulfilled"],
+            "category_shortfalls": selection["category_shortfalls"],
             "category_suggestions_are_ground_truth": False,
             "all_seed_masks_require_human_correction": True,
             "additional_training_performed": False,

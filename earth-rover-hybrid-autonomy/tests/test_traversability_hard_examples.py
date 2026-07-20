@@ -89,6 +89,7 @@ def test_hard_selection_meets_exact_category_targets_and_isolates_validation_rid
 
     assert len(selected) == 24
     assert report["ready_for_annotation_bundle"] is True
+    assert report["category_target_fulfilled"] is True
     assert report["category_distribution"] == HARD_CATEGORY_TARGETS
     train = set(report["split_rides"]["hard_train_candidates"])
     validation = set(report["split_rides"]["hard_validation_candidates"])
@@ -125,6 +126,7 @@ def test_hard_selection_reports_single_ride_shortfall(tmp_path: Path) -> None:
     )
 
     assert report["ready_for_annotation_bundle"] is False
+    assert report["partial_bundle_allowed"] is False
     assert report["split_rides"]["hard_validation_candidates"] == []
 
 
@@ -156,7 +158,9 @@ def test_hard_selection_does_not_fill_a_missing_category_from_other_categories(
         "PAVED_HARD_CASE": 3,
     }
     assert report["category_shortfalls"]["PAVED_HARD_CASE"] == 3
-    assert report["ready_for_annotation_bundle"] is False
+    assert report["category_target_fulfilled"] is False
+    assert report["partial_bundle_allowed"] is True
+    assert report["ready_for_annotation_bundle"] is True
 
 
 def test_v1_source_seed_preserves_off_road_and_obstacle_ids(tmp_path: Path) -> None:
