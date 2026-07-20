@@ -89,7 +89,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--exclude-ride", action="append", default=[])
     parser.add_argument("--require-cuda", action="store_true")
     return parser.parse_args()
 
@@ -119,9 +118,7 @@ def main() -> int:
 
     all_samples = load_manifest(full_manifest)
     approved_samples = load_approved_manifest(approved_manifest)
-    approved_rides = {sample.ride_id for sample in approved_samples}
-    additional_excluded_rides = set(args.exclude_ride)
-    excluded_rides = approved_rides | additional_excluded_rides
+    excluded_rides = {sample.ride_id for sample in approved_samples}
     segments, selected = select_temporal_segments(
         all_samples,
         excluded_rides,
@@ -136,17 +133,13 @@ def main() -> int:
         selected,
         maximum_gap_seconds=float(config["maximum_raw_frame_gap_seconds"]),
     )
-    selected_rides = {segment.ride_id for segment in segments}
-    approved_overlap = selected_rides & approved_rides
-    additional_excluded_overlap = selected_rides & additional_excluded_rides
-    if approved_overlap or additional_excluded_overlap:
-        raise SystemExit("selected temporal ride overlaps an excluded ride")
+    if {segment.ride_id for segment in segments} & excluded_rides:
+        raise SystemExit("selected temporal ride overlaps approved train/validation/test rides")
     _write_json(
         output / "selected_segments.json",
         {
             "segments": [asdict(segment) for segment in segments],
-            "approved_split_ride_ids": sorted(approved_rides),
-            "additional_excluded_ride_ids": sorted(additional_excluded_rides),
+            "approved_split_ride_ids": sorted(excluded_rides),
             "ride_overlap": [],
             "test_split_evaluated": False,
             "selection_source": str(full_manifest),
@@ -198,9 +191,7 @@ def main() -> int:
         "full_manifest_sha256": _sha256(full_manifest),
         "approved_manifest_path": str(approved_manifest),
         "approved_manifest_sha256": _sha256(approved_manifest),
-        "approved_ride_overlap": sorted(approved_overlap),
-        "additional_excluded_ride_ids": sorted(additional_excluded_rides),
-        "additional_excluded_ride_overlap": sorted(additional_excluded_overlap),
+        "approved_ride_overlap": [],
         "preprocessing": "training-identical aspect-ratio-preserving letterbox and ImageNet normalization",
         "class_mapping": {"0": "ON_ROAD", "1": "OFF_ROAD", "2": "OBSTACLE"},
         "confidence_threshold_applied": False,

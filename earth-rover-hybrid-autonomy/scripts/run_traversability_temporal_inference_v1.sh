@@ -7,7 +7,6 @@ FULL_MANIFEST="${FULL_MANIFEST:-$HOME/datasets/manifests/frodobots_2k_phase2/ful
 APPROVED_MANIFEST="${APPROVED_MANIFEST:-$HOME/datasets/generated/traversability_dataset_v1/approved_120_v1/manifest.csv}"
 CHECKPOINT="${CHECKPOINT:-$HOME/datasets/experiments/traversability_segformer_b0_v1/full_training/segformer_b0_best.pt}"
 OUTPUT_DIR="${OUTPUT_DIR:-$HOME/datasets/review_bundles/traversability_temporal_v1}"
-EXCLUDE_RIDES="${EXCLUDE_RIDES:-}"
 CONFIG_PATH="$ROOT_DIR/configs/traversability_temporal_inference_v1.yaml"
 export HF_HOME="${HF_HOME:-$HOME/datasets/generated/huggingface}"
 export CUBLAS_WORKSPACE_CONFIG="${CUBLAS_WORKSPACE_CONFIG:-:4096:8}"
@@ -79,14 +78,7 @@ before_approved="$(tree_fingerprint "$(dirname "$APPROVED_MANIFEST")")"
 before_checkpoint="$(sha256sum "$CHECKPOINT" | awk '{print $1}')"
 
 echo "[3/5] Running raw temporal inference on 3 unseen 30-second ride segments"
-exclude_args=()
-if [[ -n "$EXCLUDE_RIDES" ]]; then
-    IFS=',' read -r -a excluded_ride_ids <<< "$EXCLUDE_RIDES"
-    for ride_id in "${excluded_ride_ids[@]}"; do
-        exclude_args+=(--exclude-ride "$ride_id")
-    done
-fi
-PYTHONDONTWRITEBYTECODE=1 "$PYTHON" training/run_traversability_temporal_inference.py --dataset-root "$DATASET_ROOT" --full-manifest "$FULL_MANIFEST" --approved-manifest "$APPROVED_MANIFEST" --checkpoint "$CHECKPOINT" --config "$CONFIG_PATH" --output-dir "$OUTPUT_DIR" "${exclude_args[@]}" --require-cuda
+PYTHONDONTWRITEBYTECODE=1 "$PYTHON" training/run_traversability_temporal_inference.py --dataset-root "$DATASET_ROOT" --full-manifest "$FULL_MANIFEST" --approved-manifest "$APPROVED_MANIFEST" --checkpoint "$CHECKPOINT" --config "$CONFIG_PATH" --output-dir "$OUTPUT_DIR" --require-cuda
 
 echo "[4/5] Verifying temporal artifacts, split isolation, and raw prediction policy"
 "$PYTHON" - "$OUTPUT_DIR" <<'PY'
@@ -102,7 +94,6 @@ rows = list(csv.DictReader((root / "per_frame_statistics.csv").open(newline="", 
 assert report["success"] is True
 assert report["selected_ride_count"] == 3
 assert report["approved_ride_overlap"] == []
-assert report["additional_excluded_ride_overlap"] == []
 assert selection["ride_overlap"] == []
 assert selection["test_split_evaluated"] is False
 assert report["confidence_threshold_applied"] is False
@@ -117,7 +108,6 @@ for relative in report["video_paths"]:
 for name in ("review.html", "README.md", "anomaly_candidates.json", "frozen_config.yaml"):
     assert (root / name).is_file() and (root / name).stat().st_size > 0
 print(f"Rides: {[item['ride_id'] for item in selection['segments']]}")
-print(f"Additional excluded rides: {report['additional_excluded_ride_ids']}")
 print(f"Frames: success={report['successful_frame_count']} failed={report['decode_failure_count']}")
 print(f"Latency ms: {report['latency_ms']}")
 print(f"Effective FPS: {report['effective_fps']}")

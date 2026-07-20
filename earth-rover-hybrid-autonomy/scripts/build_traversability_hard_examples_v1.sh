@@ -3,11 +3,11 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATASET_ROOT="${DATASET_ROOT:-$HOME/datasets/output_rides_0}"
-TEMPORAL_BUNDLES="${TEMPORAL_BUNDLES:-${TEMPORAL_BUNDLE:-$HOME/datasets/review_bundles/traversability_temporal_v1}}"
+TEMPORAL_BUNDLE="${TEMPORAL_BUNDLE:-$HOME/datasets/review_bundles/traversability_temporal_v1}"
 APPROVED_DATASET="${APPROVED_DATASET:-$HOME/datasets/generated/traversability_dataset_v1/approved_120_v1}"
 CHECKPOINT="${CHECKPOINT:-$HOME/datasets/experiments/traversability_segformer_b0_v1/full_training/segformer_b0_best.pt}"
 OUTPUT_DIR="${OUTPUT_DIR:-$HOME/datasets/generated/traversability_dataset_v2/hard_examples_annotation_v1}"
-SAMPLE_COUNT="${SAMPLE_COUNT:-60}"
+EXPECTED_COUNT=24
 SEED="${SEED:-20260721}"
 export HF_HOME="${HF_HOME:-$HOME/datasets/generated/huggingface}"
 export CUBLAS_WORKSPACE_CONFIG="${CUBLAS_WORKSPACE_CONFIG:-:4096:8}"
@@ -21,26 +21,17 @@ else
     exit 1
 fi
 
-IFS=':' read -r -a temporal_bundle_paths <<< "$TEMPORAL_BUNDLES"
-for path in "$DATASET_ROOT" "$APPROVED_DATASET" "${temporal_bundle_paths[@]}"; do
+for path in "$DATASET_ROOT" "$TEMPORAL_BUNDLE" "$APPROVED_DATASET"; do
     if [[ ! -d "$path" ]]; then
         echo "ERROR: Required Dell directory is missing: $path" >&2
         exit 1
     fi
 done
-for path in "$APPROVED_DATASET/metadata.csv" "$CHECKPOINT"; do
+for path in "$TEMPORAL_BUNDLE/per_frame_statistics.csv" "$TEMPORAL_BUNDLE/temporal_inference_report.json" "$APPROVED_DATASET/metadata.csv" "$CHECKPOINT"; do
     if [[ ! -f "$path" ]]; then
         echo "ERROR: Required input is missing: $path" >&2
         exit 1
     fi
-done
-for path in "${temporal_bundle_paths[@]}"; do
-    for required in "$path/per_frame_statistics.csv" "$path/temporal_inference_report.json"; do
-        if [[ ! -f "$required" ]]; then
-            echo "ERROR: Required temporal input is missing: $required" >&2
-            exit 1
-        fi
-    done
 done
 if [[ -d "$OUTPUT_DIR" && -n "$(find "$OUTPUT_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
     echo "ERROR: Output is not empty; preserve it and choose a new OUTPUT_DIR: $OUTPUT_DIR" >&2
@@ -82,19 +73,15 @@ if not torch.cuda.is_available():
 print(f"CUDA device: {torch.cuda.get_device_name(0)}")
 PY
 before_raw="$(tree_fingerprint "$DATASET_ROOT")"
-before_temporal="$(for path in "${temporal_bundle_paths[@]}"; do tree_fingerprint "$path"; done)"
+before_temporal="$(tree_fingerprint "$TEMPORAL_BUNDLE")"
 before_approved="$(tree_fingerprint "$APPROVED_DATASET")"
 before_checkpoint="$(sha256sum "$CHECKPOINT" | awk '{print $1}')"
 
-echo "[3/6] Mining v1 temporal errors and building the 60-image CVAT bundle"
-temporal_args=()
-for path in "${temporal_bundle_paths[@]}"; do
-    temporal_args+=(--temporal-bundle "$path")
-done
-PYTHONDONTWRITEBYTECODE=1 "$PYTHON" training/build_traversability_hard_examples.py --dataset-root "$DATASET_ROOT" "${temporal_args[@]}" --approved-dataset "$APPROVED_DATASET" --checkpoint "$CHECKPOINT" --output-dir "$OUTPUT_DIR" --sample-count "$SAMPLE_COUNT" --seed "$SEED" --require-cuda
+echo "[3/6] Mining v1 temporal errors and building the targeted 24-image CVAT bundle"
+PYTHONDONTWRITEBYTECODE=1 "$PYTHON" training/build_traversability_hard_examples.py --dataset-root "$DATASET_ROOT" --temporal-bundle "$TEMPORAL_BUNDLE" --approved-dataset "$APPROVED_DATASET" --checkpoint "$CHECKPOINT" --output-dir "$OUTPUT_DIR" --seed "$SEED" --require-cuda
 
 echo "[4/6] Validating count, provenance, split isolation, and v1 seed masks"
-"$PYTHON" - "$OUTPUT_DIR" "$APPROVED_DATASET" "$SAMPLE_COUNT" <<'PY'
+"$PYTHON" - "$OUTPUT_DIR" "$APPROVED_DATASET" "$EXPECTED_COUNT" <<'PY'
 import csv
 import json
 import sys
@@ -127,7 +114,11 @@ assert selection["approved_exact_overlap_count"] == 0
 assert sum(selection["split_sample_counts"].values()) == expected
 assert selection["minimum_selected_hash_distance"] > selection["hash_distance_threshold"]
 assert selection["minimum_same_ride_time_delta_seconds"] >= selection["minimum_separation_seconds"]
-assert all(selection["category_distribution"][name] >= 12 for name in ("CURB_HARD_NEGATIVE", "TRUE_OFF_ROAD", "PAVED_HARD_CASE"))
+assert selection["category_distribution"] == {
+    "CURB_HARD_NEGATIVE": 12,
+    "TRUE_OFF_ROAD": 6,
+    "PAVED_HARD_CASE": 6,
+}
 train_rides = set(selection["split_rides"]["hard_train_candidates"])
 validation_rides = set(selection["split_rides"]["hard_validation_candidates"])
 assert train_rides and validation_rides and not train_rides & validation_rides
@@ -172,7 +163,7 @@ PY
 
 echo "[5/6] Verifying immutable sources and Git exclusion"
 after_raw="$(tree_fingerprint "$DATASET_ROOT")"
-after_temporal="$(for path in "${temporal_bundle_paths[@]}"; do tree_fingerprint "$path"; done)"
+after_temporal="$(tree_fingerprint "$TEMPORAL_BUNDLE")"
 after_approved="$(tree_fingerprint "$APPROVED_DATASET")"
 after_checkpoint="$(sha256sum "$CHECKPOINT" | awk '{print $1}')"
 after_git_status="$(git status --porcelain)"

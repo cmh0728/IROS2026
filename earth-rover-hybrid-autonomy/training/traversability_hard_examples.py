@@ -20,6 +20,11 @@ HARD_CATEGORIES = (
     "TRUE_OFF_ROAD",
     "PAVED_HARD_CASE",
 )
+HARD_CATEGORY_TARGETS = {
+    "CURB_HARD_NEGATIVE": 12,
+    "TRUE_OFF_ROAD": 6,
+    "PAVED_HARD_CASE": 6,
+}
 
 
 def temporal_prefilter(
@@ -131,17 +136,17 @@ def classify_hard_example(
 def select_hard_examples(
     candidates: list[AnnotationCandidate],
     existing: ExistingAnnotationSet,
-    requested_count: int,
-    minimum_per_category: int,
+    category_targets: dict[str, int],
     minimum_separation_seconds: float,
     maximum_per_ride: int,
     hash_distance_threshold: int,
     seed: int,
 ) -> tuple[list[AnnotationCandidate], dict[str, object]]:
-    if not 60 <= requested_count <= 100:
-        raise ValueError("hard-example annotation count must be between 60 and 100")
-    if minimum_per_category <= 0 or minimum_per_category * len(HARD_CATEGORIES) > requested_count:
-        raise ValueError("invalid hard-category minimum")
+    if set(category_targets) != set(HARD_CATEGORIES) or any(
+        count <= 0 for count in category_targets.values()
+    ):
+        raise ValueError("category targets must define a positive count for every hard category")
+    requested_count = sum(category_targets.values())
     hashes = {candidate.source_sample_id: difference_hash(candidate.image_path) for candidate in candidates}
     eligible: list[AnnotationCandidate] = []
     exclusions: Counter[str] = Counter()
@@ -167,38 +172,33 @@ def select_hard_examples(
     selected: list[AnnotationCandidate] = []
     ride_counts: Counter[str] = Counter()
     category_counts: Counter[str] = Counter()
-    while len(selected) < requested_count:
-        category = min(
-            HARD_CATEGORIES,
-            key=lambda name: (category_counts[name], HARD_CATEGORIES.index(name)),
-        )
-        choices = [
-            candidate for candidate in category_pools[category]
-            if candidate not in selected
-            and ride_counts[candidate.ride_id] < maximum_per_ride
-            and _separated(candidate, selected, minimum_separation_seconds)
-            and _hash_separated(candidate, selected, hashes, hash_distance_threshold)
-        ]
-        if not choices:
-            remaining = [
-                candidate for candidate in eligible
+    selection_order = ("CURB_HARD_NEGATIVE", "PAVED_HARD_CASE", "TRUE_OFF_ROAD")
+    for category in selection_order:
+        while category_counts[category] < category_targets[category]:
+            choices = [
+                candidate
+                for candidate in category_pools[category]
                 if candidate not in selected
                 and ride_counts[candidate.ride_id] < maximum_per_ride
                 and _separated(candidate, selected, minimum_separation_seconds)
                 and _hash_separated(candidate, selected, hashes, hash_distance_threshold)
             ]
-            if not remaining:
+            if not choices:
                 break
-            remaining.sort(key=lambda candidate: (-_category_score(candidate, candidate.scene_categories[0]), _candidate_key(candidate, seed)))
-            chosen = remaining[0]
-        else:
-            chosen = choices[0]
-        selected.append(chosen)
-        ride_counts[chosen.ride_id] += 1
-        category_counts[chosen.scene_categories[0]] += 1
+            chosen = min(
+                choices,
+                key=lambda candidate: (
+                    ride_counts[candidate.ride_id],
+                    -_category_score(candidate, category),
+                    _candidate_key(candidate, seed),
+                ),
+            )
+            selected.append(chosen)
+            ride_counts[chosen.ride_id] += 1
+            category_counts[category] += 1
 
     shortfalls = {
-        category: max(0, minimum_per_category - category_counts[category])
+        category: max(0, category_targets[category] - category_counts[category])
         for category in HARD_CATEGORIES
     }
     rides = sorted({candidate.ride_id for candidate in selected})
@@ -260,7 +260,10 @@ def select_hard_examples(
         "source_candidate_count": len(candidates),
         "eligible_candidate_count": len(eligible),
         "selected_sample_count": len(selected),
-        "category_distribution": dict(sorted(category_counts.items())),
+        "category_distribution": {
+            category: category_counts[category] for category in HARD_CATEGORIES
+        },
+        "category_targets": dict(category_targets),
         "category_shortfalls": shortfalls,
         "ride_distribution": dict(sorted(ride_counts.items())),
         "split_rides": split_rides,
@@ -286,7 +289,6 @@ def select_hard_examples(
             ),
             default=None,
         ),
-        "minimum_per_category": minimum_per_category,
         "minimum_separation_seconds": minimum_separation_seconds,
         "maximum_per_ride": maximum_per_ride,
         "hash_distance_threshold": hash_distance_threshold,
@@ -312,7 +314,7 @@ def select_hard_examples(
     }
     report["ready_for_annotation_bundle"] = (
         len(selected) == requested_count
-        and not any(shortfalls.values())
+        and all(category_counts[name] == target for name, target in category_targets.items())
         and bool(split_rides["hard_train_candidates"])
         and bool(split_rides["hard_validation_candidates"])
     )

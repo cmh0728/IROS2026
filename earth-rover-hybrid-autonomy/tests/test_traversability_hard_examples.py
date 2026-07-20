@@ -11,6 +11,7 @@ from training.traversability_annotation import (
 )
 from training.traversability_expansion import ExistingAnnotationSet
 from training.traversability_hard_examples import (
+    HARD_CATEGORY_TARGETS,
     classify_hard_example,
     select_hard_examples,
     temporal_prefilter,
@@ -62,7 +63,9 @@ def test_spatial_heuristic_suggests_curb_candidate_without_claiming_truth() -> N
     assert evidence["mean_confidence"] > 0.8
 
 
-def test_hard_selection_balances_categories_and_isolates_validation_ride(tmp_path: Path) -> None:
+def test_hard_selection_meets_exact_category_targets_and_isolates_validation_ride(
+    tmp_path: Path,
+) -> None:
     candidates = []
     categories = ("CURB_HARD_NEGATIVE", "TRUE_OFF_ROAD", "PAVED_HARD_CASE")
     for index in range(72):
@@ -74,18 +77,26 @@ def test_hard_selection_balances_categories_and_isolates_validation_ride(tmp_pat
         candidates.append(make_candidate(path, category, ride, 1000.0 + index * 2.0, index))
     existing = ExistingAnnotationSet(frozenset(), frozenset(), {}, (), frozenset())
 
-    selected, report = select_hard_examples(candidates, existing, 60, 12, 0.75, 24, 4, 17)
+    selected, report = select_hard_examples(
+        candidates,
+        existing,
+        HARD_CATEGORY_TARGETS,
+        0.75,
+        24,
+        4,
+        17,
+    )
 
-    assert len(selected) == 60
+    assert len(selected) == 24
     assert report["ready_for_annotation_bundle"] is True
-    assert all(report["category_distribution"][name] >= 12 for name in categories)
+    assert report["category_distribution"] == HARD_CATEGORY_TARGETS
     train = set(report["split_rides"]["hard_train_candidates"])
     validation = set(report["split_rides"]["hard_validation_candidates"])
     assert train
     assert validation
     assert not train & validation
     assert report["ride_leakage"] == []
-    assert sum(report["split_sample_counts"].values()) == 60
+    assert sum(report["split_sample_counts"].values()) == 24
     assert set(report["split_category_distribution"]) == {
         "hard_train_candidates",
         "hard_validation_candidates",
@@ -95,7 +106,7 @@ def test_hard_selection_balances_categories_and_isolates_validation_ride(tmp_pat
 def test_hard_selection_reports_single_ride_shortfall(tmp_path: Path) -> None:
     candidates = []
     categories = ("CURB_HARD_NEGATIVE", "TRUE_OFF_ROAD", "PAVED_HARD_CASE")
-    for index in range(60):
+    for index in range(24):
         path = tmp_path / f"single_ride_{index:03d}.jpg"
         image = np.random.default_rng(index).integers(0, 256, (72, 128, 3), dtype=np.uint8)
         assert cv2.imwrite(str(path), image)
@@ -106,16 +117,46 @@ def test_hard_selection_reports_single_ride_shortfall(tmp_path: Path) -> None:
     _, report = select_hard_examples(
         candidates,
         ExistingAnnotationSet(frozenset(), frozenset(), {}, (), frozenset()),
-        60,
-        12,
+        HARD_CATEGORY_TARGETS,
         0.75,
-        60,
+        24,
         4,
         17,
     )
 
     assert report["ready_for_annotation_bundle"] is False
     assert report["split_rides"]["hard_validation_candidates"] == []
+
+
+def test_hard_selection_does_not_fill_a_missing_category_from_other_categories(
+    tmp_path: Path,
+) -> None:
+    candidates = []
+    categories = ["CURB_HARD_NEGATIVE"] * 12 + ["TRUE_OFF_ROAD"] * 12 + ["PAVED_HARD_CASE"] * 3
+    for index, category in enumerate(categories):
+        path = tmp_path / f"shortfall_{index:03d}.jpg"
+        image = np.random.default_rng(index).integers(0, 256, (72, 128, 3), dtype=np.uint8)
+        assert cv2.imwrite(str(path), image)
+        candidates.append(make_candidate(path, category, str(index % 3), 1000.0 + index * 2, index))
+
+    selected, report = select_hard_examples(
+        candidates,
+        ExistingAnnotationSet(frozenset(), frozenset(), {}, (), frozenset()),
+        HARD_CATEGORY_TARGETS,
+        0.75,
+        24,
+        4,
+        17,
+    )
+
+    assert len(selected) == 21
+    assert report["category_distribution"] == {
+        "CURB_HARD_NEGATIVE": 12,
+        "TRUE_OFF_ROAD": 6,
+        "PAVED_HARD_CASE": 3,
+    }
+    assert report["category_shortfalls"]["PAVED_HARD_CASE"] == 3
+    assert report["ready_for_annotation_bundle"] is False
 
 
 def test_v1_source_seed_preserves_off_road_and_obstacle_ids(tmp_path: Path) -> None:
