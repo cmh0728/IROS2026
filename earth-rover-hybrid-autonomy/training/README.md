@@ -64,6 +64,8 @@ After the approved SegFormer-B0 static-image baseline, run `scripts/run_traversa
 
 After human temporal review, `scripts/build_traversability_hard_examples_v1.sh` mines only the reviewed unseen rides for OFF_ROAD transitions and high-confidence predictions. It rechecks selected frames with the frozen v1 checkpoint, suppresses temporal and perceptual duplicates, isolates hard-train and hard-validation by ride, and targets 24 CVAT images: 12 curb hard negatives, 6 true OFF_ROAD scenes, and 6 paved hard cases. Category names are unverified sampling suggestions; every seed mask requires human correction before any v2 training. If a category is short, the script records the exact shortfall and builds only the relevant available subset without unrelated backfill.
 
+For broad manual v2 review, run `scripts/build_manual_candidates_v2.sh` on Dell. It performs a 12-image dry run, then deterministically extracts about 200 untouched `uid_s_1000` front-camera frames from `output_rides_1` and `output_rides_2`. Approved v1 and prior hard-example rides are excluded, selection favors one image per ride with at most two separated by 20 seconds, and numbered contact sheets contain 25 candidates each. No model inference or training is involved.
+
 ## Traversability Pseudo-Label Pilot
 
 The action baseline remains unchanged. Traversability pseudo-labeling is a separate research-only workflow using `nvidia/segformer-b0-finetuned-ade-512-512` as an annotation draft, never as verified ground truth or a rover controller.
