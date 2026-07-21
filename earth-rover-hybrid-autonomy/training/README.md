@@ -66,6 +66,8 @@ After human temporal review, `scripts/build_traversability_hard_examples_v1.sh` 
 
 For broad manual v2 review, run `scripts/build_manual_candidates_v2.sh` on Dell. It performs a 12-image dry run, then deterministically extracts about 200 untouched `uid_s_1000` front-camera frames from `output_rides_1` and `output_rides_2`. Approved v1 and prior hard-example rides are excluded, selection favors one image per ride with at most two separated by 20 seconds, and numbered contact sheets contain 25 candidates each. No model inference or training is involved.
 
+After contact-sheet review, `scripts/select_manual_candidates_v2.sh` validates the approved candidate numbers and creates a separate 33-image CVAT upload bundle without changing the original JPG bytes or source review bundle.
+
 ## Traversability Pseudo-Label Pilot
 
 The action baseline remains unchanged. Traversability pseudo-labeling is a separate research-only workflow using `nvidia/segformer-b0-finetuned-ade-512-512` as an annotation draft, never as verified ground truth or a rover controller.
