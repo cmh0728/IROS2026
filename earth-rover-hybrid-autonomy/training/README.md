@@ -68,6 +68,8 @@ For broad manual v2 review, run `scripts/build_manual_candidates_v2.sh` on Dell.
 
 After contact-sheet review, `scripts/select_manual_candidates_v2.sh` validates the approved candidate numbers and creates a separate 33-image CVAT upload bundle without changing the original JPG bytes or source review bundle.
 
+After CVAT export, `scripts/import_validate_manual_traversability_v2_33.sh` imports only `SegmentationClass` masks into a separate validated 33-image bundle, verifies the existing v1 label contract and original JPG bytes, and creates overlay contact sheets in groups of at most 25. It does not merge with approved v1 data or start training.
+
 ## Traversability Pseudo-Label Pilot
 
 The action baseline remains unchanged. Traversability pseudo-labeling is a separate research-only workflow using `nvidia/segformer-b0-finetuned-ade-512-512` as an annotation draft, never as verified ground truth or a rover controller.

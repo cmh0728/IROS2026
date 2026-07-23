@@ -69,7 +69,7 @@ def create_selected_bundle(
     try:
         images_dir = temporary / "images"
         images_dir.mkdir(parents=True)
-        for row, source_image in zip(selected_rows, source_images, strict=True):
+        for row, source_image in zip(selected_rows, source_images):
             destination = images_dir / source_image.name
             shutil.copy2(source_image, destination)
             row["image_path"] = f"images/{destination.name}"
