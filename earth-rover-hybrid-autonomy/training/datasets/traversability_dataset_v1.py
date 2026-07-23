@@ -71,7 +71,7 @@ class TraversabilityDataset(Dataset[dict[str, object]]):
         augment: bool = False,
         seed: int = 20260718,
     ) -> None:
-        if split not in {"train", "validation", "test"}:
+        if split not in {"train", "validation", "test", "new_holdout"}:
             raise ValueError(f"unsupported split: {split}")
         if image_size <= 0:
             raise ValueError("image_size must be positive")

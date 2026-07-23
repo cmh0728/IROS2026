@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import html
 import importlib.metadata
 import json
@@ -10,6 +11,7 @@ import math
 import os
 import random
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -51,6 +53,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--mode", choices=("overfit", "full"), required=True)
+    parser.add_argument(
+        "--initial-checkpoint",
+        help="Optional approved 3-class checkpoint used instead of ADE initialization.",
+    )
     parser.add_argument("--require-cuda", action="store_true")
     return parser.parse_args()
 
@@ -77,10 +83,23 @@ def main() -> int:
         torch.cuda.reset_peak_memory_stats(device)
     started = time.monotonic()
     if args.mode == "overfit":
+        if args.initial_checkpoint:
+            raise SystemExit("initial-checkpoint is supported only for full training")
         report = run_overfit(manifest, config, output, device)
         report_name = "overfit_report.json"
     else:
-        report = run_full_training(manifest, config, output, device)
+        initial_checkpoint = (
+            Path(args.initial_checkpoint).expanduser().resolve()
+            if args.initial_checkpoint
+            else None
+        )
+        report = run_full_training(
+            manifest,
+            config,
+            output,
+            device,
+            initial_checkpoint=initial_checkpoint,
+        )
         report_name = "experiment_report.json"
     report.update(_environment_report(device, manifest, time.monotonic() - started))
     (output / report_name).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -161,6 +180,7 @@ def run_full_training(
     config: dict[str, object],
     output: Path,
     device: torch.device,
+    initial_checkpoint: Path | None = None,
 ) -> dict[str, object]:
     seed = int(config["seed"])
     image_size = int(config["image_size"])
@@ -169,7 +189,11 @@ def run_full_training(
     test_dataset = TraversabilityDataset(manifest, "test", image_size, augment=False, seed=seed)
     train_loader = _loader(train_dataset, int(config["batch_size"]), True, seed)
     validation_loader = _loader(validation_dataset, int(config["batch_size"]), False, seed)
-    model = build_traversability_segformer(pretrained=True).to(device)
+    model, initialization = load_training_model(
+        initial_checkpoint,
+        device,
+        initialization_mode="approved_v1_best_checkpoint",
+    )
     optimizer = AdamW(
         model.parameters(),
         lr=float(config["learning_rate"]),
@@ -194,7 +218,13 @@ def run_full_training(
         }
         history.append(record)
         epoch_checkpoint = checkpoints / f"epoch_{epoch:03d}.pt"
-        save_checkpoint(model, epoch_checkpoint, epoch, validation)
+        save_checkpoint(
+            model,
+            epoch_checkpoint,
+            epoch,
+            validation,
+            parent_checkpoint=initial_checkpoint,
+        )
         print(
             f"epoch={epoch:03d} train_loss={train_loss:.6f} val_loss={validation['loss']:.6f} "
             f"val_mIoU={validation['mean_iou']:.4f}",
@@ -274,6 +304,7 @@ def run_full_training(
             "test": len(test_dataset),
         },
         "unweighted_cross_entropy": True,
+        "initialization": initialization,
         "history": history,
         "live_rover_commands_sent": False,
     }
@@ -362,7 +393,13 @@ def metrics_from_confusion(confusion: Tensor, loss: float) -> dict[str, object]:
     }
 
 
-def save_checkpoint(model: nn.Module, path: Path, epoch: int, metrics: dict[str, object]) -> None:
+def save_checkpoint(
+    model: nn.Module,
+    path: Path,
+    epoch: int,
+    metrics: dict[str, object],
+    parent_checkpoint: Path | None = None,
+) -> None:
     torch.save(
         {
             "model_state_dict": model.state_dict(),
@@ -371,9 +408,54 @@ def save_checkpoint(model: nn.Module, path: Path, epoch: int, metrics: dict[str,
             "metrics": metrics,
             "source_checkpoint": CHECKPOINT,
             "source_revision": REVISION,
+            "parent_checkpoint": str(parent_checkpoint) if parent_checkpoint else None,
+            "parent_checkpoint_sha256": (
+                _sha256(parent_checkpoint) if parent_checkpoint else None
+            ),
         },
         path,
     )
+
+
+def load_training_model(
+    initial_checkpoint: Path | None,
+    device: torch.device,
+    initialization_mode: str = "three_class_checkpoint",
+) -> tuple[nn.Module, dict[str, object]]:
+    if initial_checkpoint is None:
+        return build_traversability_segformer(pretrained=True).to(device), {
+            "mode": "ade20k_pretrained_backbone",
+            "checkpoint": CHECKPOINT,
+            "revision": REVISION,
+        }
+    if not initial_checkpoint.is_file():
+        raise ValueError(f"initial checkpoint is missing: {initial_checkpoint}")
+    checkpoint = torch.load(initial_checkpoint, map_location=device, weights_only=True)
+    required = {
+        "model_state_dict",
+        "model_config",
+        "epoch",
+        "metrics",
+        "source_checkpoint",
+        "source_revision",
+    }
+    missing = sorted(required - set(checkpoint))
+    if missing:
+        raise ValueError(f"initial checkpoint schema is missing keys: {missing}")
+    config = checkpoint["model_config"]
+    if int(config.get("num_labels", -1)) != 3:
+        raise ValueError("initial checkpoint must use num_labels=3")
+    if int(config.get("semantic_loss_ignore_index", -1)) != 255:
+        raise ValueError("initial checkpoint must use semantic_loss_ignore_index=255")
+    model = build_traversability_segformer(False, config).to(device)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    return model, {
+        "mode": initialization_mode,
+        "checkpoint": str(initial_checkpoint),
+        "checkpoint_sha256": _sha256(initial_checkpoint),
+        "source_epoch": int(checkpoint["epoch"]),
+        "source_metrics": checkpoint["metrics"],
+    }
 
 
 @torch.no_grad()
@@ -562,7 +644,25 @@ def _environment_report(device: torch.device, manifest: Path, elapsed: float) ->
         },
         "test_used_for_hyperparameter_selection": False,
         "offline_only": True,
+        "git_commit": _git_commit(),
     }
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _git_commit() -> str | None:
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
 
 
 def _set_deterministic(seed: int) -> None:

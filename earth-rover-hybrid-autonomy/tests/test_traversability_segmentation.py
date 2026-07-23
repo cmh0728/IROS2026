@@ -20,6 +20,7 @@ from training.datasets.traversability_dataset_v1 import (
 )
 from training.train_traversability_segformer import (
     evaluate,
+    load_training_model,
     metrics_from_confusion,
     segmentation_loss_sum,
 )
@@ -65,6 +66,34 @@ def test_dataset_shapes_dtypes_and_batch_collation(tmp_path: Path) -> None:
     assert set(item["labels"].unique().tolist()).issubset({0, 1, 2, 255})
     assert batch["pixel_values"].shape == (2, 3, 32, 32)
     assert batch["labels"].shape == (2, 32, 32)
+
+
+def test_dataset_accepts_new_holdout_split(tmp_path: Path) -> None:
+    manifest = write_manifest(tmp_path, sample_count=1)
+    rows = list(csv.DictReader(manifest.open(newline="", encoding="utf-8")))
+    rows[0]["split"] = "new_holdout"
+    with manifest.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=rows[0])
+        writer.writeheader()
+        writer.writerows(rows)
+
+    dataset = TraversabilityDataset(
+        manifest,
+        "new_holdout",
+        image_size=32,
+        augment=False,
+        seed=7,
+    )
+
+    assert len(dataset) == 1
+
+
+def test_initial_checkpoint_schema_is_strict(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "bad.pt"
+    torch.save({"model_state_dict": {}}, checkpoint)
+
+    with pytest.raises(ValueError, match="schema is missing keys"):
+        load_training_model(checkpoint, torch.device("cpu"))
 
 
 def test_approved_dataset_writes_validator_metadata_and_split_manifests(tmp_path: Path) -> None:

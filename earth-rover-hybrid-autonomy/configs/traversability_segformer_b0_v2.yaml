@@ -1,0 +1,22 @@
+experiment_name: traversability_segformer_b0_v2
+checkpoint: nvidia/segformer-b0-finetuned-ade-512-512
+revision: 489d5cd81a0b59fab9b7ea758d3548ebe99677da
+license: NVIDIA research/evaluation-only non-commercial use
+license_source: https://github.com/NVlabs/SegFormer/blob/master/LICENSE
+initialization: approved_v1_best_checkpoint
+image_size: 512
+num_labels: 3
+ignore_index: 255
+seed: 20260723
+batch_size: 4
+max_epochs: 20
+patience: 5
+learning_rate: 0.00001
+weight_decay: 0.0001
+augmentation:
+  horizontal_flip_probability: 0.5
+  brightness_contrast: light
+regression_gate:
+  max_mean_iou_drop: 0.05
+  max_pixel_accuracy_drop: 0.05
+  max_false_traversable_rate_increase: 0.05

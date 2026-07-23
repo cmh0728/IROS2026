@@ -70,6 +70,10 @@ After contact-sheet review, `scripts/select_manual_candidates_v2.sh` validates t
 
 After CVAT export, `scripts/import_validate_manual_traversability_v2_33.sh` imports only `SegmentationClass` masks into a separate validated 33-image bundle, verifies the existing v1 label contract and original JPG bytes, and creates overlay contact sheets in groups of at most 25. It does not merge with approved v1 data or start training.
 
+Build the approved 153-image v2 dataset on Dell with `scripts/build_traversability_dataset_v2.sh`. It preserves the existing v1 validation/test assignments, adds only group-isolated manual samples to training, and reserves new source-ride groups as `new_holdout`. The builder rejects label-contract differences, exact image duplicates, ride overlap, and existing output paths.
+
+After inspecting the v2 split report, run `scripts/run_traversability_segformer_b0_v2.sh` explicitly on Dell. It initializes from the approved v1 best checkpoint, uses the lower learning rate in `configs/traversability_segformer_b0_v2.yaml`, and compares v1/v2 on the fixed v1 validation/test sets and the new holdout. A separate from-ADE baseline is optional and must use a different output directory by running `training/train_traversability_segformer.py` without `--initial-checkpoint`; it is not part of the default v2 workflow.
+
 ## Traversability Pseudo-Label Pilot
 
 The action baseline remains unchanged. Traversability pseudo-labeling is a separate research-only workflow using `nvidia/segformer-b0-finetuned-ade-512-512` as an annotation draft, never as verified ground truth or a rover controller.
