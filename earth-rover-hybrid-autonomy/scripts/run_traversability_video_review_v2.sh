@@ -23,7 +23,8 @@ for command_name in ffmpeg ffprobe; do
         exit 1
     fi
 done
-if ! ffmpeg -hide_banner -encoders 2>/dev/null | grep -q 'libx264'; then
+ffmpeg_encoders="$(ffmpeg -hide_banner -encoders 2>/dev/null)"
+if [[ "$ffmpeg_encoders" != *libx264* ]]; then
     echo "ERROR: ffmpeg does not provide the libx264 encoder." >&2
     exit 1
 fi
