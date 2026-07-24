@@ -44,6 +44,7 @@ from training.models.traversability_segformer import (
     REVISION,
     WEIGHT_FILE,
     build_traversability_segformer,
+    validate_three_class_checkpoint,
 )
 
 
@@ -431,22 +432,8 @@ def load_training_model(
     if not initial_checkpoint.is_file():
         raise ValueError(f"initial checkpoint is missing: {initial_checkpoint}")
     checkpoint = torch.load(initial_checkpoint, map_location=device, weights_only=True)
-    required = {
-        "model_state_dict",
-        "model_config",
-        "epoch",
-        "metrics",
-        "source_checkpoint",
-        "source_revision",
-    }
-    missing = sorted(required - set(checkpoint))
-    if missing:
-        raise ValueError(f"initial checkpoint schema is missing keys: {missing}")
+    validate_three_class_checkpoint(checkpoint)
     config = checkpoint["model_config"]
-    if int(config.get("num_labels", -1)) != 3:
-        raise ValueError("initial checkpoint must use num_labels=3")
-    if int(config.get("semantic_loss_ignore_index", -1)) != 255:
-        raise ValueError("initial checkpoint must use semantic_loss_ignore_index=255")
     model = build_traversability_segformer(False, config).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     return model, {

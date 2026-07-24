@@ -71,27 +71,22 @@ before_v1_checkpoint="$(sha256sum "$V1_CHECKPOINT" | awk '{print $1}')"
 echo "[1/5] Running focused loader, checkpoint, metric, and v2 split tests"
 PYTHONDONTWRITEBYTECODE=1 "$PYTHON" -m pytest -p no:cacheprovider -q \
     tests/test_traversability_dataset_v2.py \
+    tests/test_traversability_checkpoint_schema.py \
     tests/test_traversability_segmentation.py
 
 echo "[2/5] Checking CUDA and approved v1 checkpoint schema"
 "$PYTHON" - "$V1_CHECKPOINT" <<'PY'
 import sys
 import torch
+from training.models.traversability_segformer import validate_three_class_checkpoint
 
 if not torch.cuda.is_available():
     raise SystemExit("CUDA unavailable")
 checkpoint = torch.load(sys.argv[1], map_location="cpu", weights_only=True)
-required = {
-    "model_state_dict", "model_config", "epoch", "metrics",
-    "source_checkpoint", "source_revision",
-}
-missing = sorted(required - set(checkpoint))
-if missing:
-    raise SystemExit(f"v1 checkpoint schema missing keys: {missing}")
-if int(checkpoint["model_config"].get("num_labels", -1)) != 3:
-    raise SystemExit("v1 checkpoint is not a 3-class segmentation model")
-if int(checkpoint["model_config"].get("semantic_loss_ignore_index", -1)) != 255:
-    raise SystemExit("v1 checkpoint does not use ignore_index=255")
+try:
+    validate_three_class_checkpoint(checkpoint)
+except ValueError as exc:
+    raise SystemExit(f"v1 checkpoint schema invalid: {exc}") from exc
 print(f"CUDA device: {torch.cuda.get_device_name(0)}")
 print(f"v1 source epoch: {checkpoint['epoch']}")
 print("Approved v1 checkpoint schema: PASS")
