@@ -30,7 +30,7 @@ Train class counts were STOP 687, FORWARD 1,242, LEFT 223, RIGHT 215, and REVERS
  [7, 12, 6, 2, 8]]
 ```
 
-The external checkpoint is `resnet18_small_baseline_best.pt`; metrics are in `small_baseline_report.json`; held-out visualization is `held_out_test_predictions.mp4`. Their Dell experiment directory is `/home/asl/datasets/outputs/frodobots_2k_phase3/small_baseline/` and is not committed.
+The external checkpoint is `resnet18_small_baseline_best.pt`; metrics are in `small_baseline_report.json`; held-out visualization is `held_out_test_predictions.mp4`. Their Dell experiment directory is `$HOME/datasets/outputs/frodobots_2k_phase3/small_baseline/` and is not committed.
 
 ## Conclusion
 

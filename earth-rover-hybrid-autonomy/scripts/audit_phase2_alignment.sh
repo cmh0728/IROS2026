@@ -2,10 +2,10 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATASET_ROOT="/home/asl/datasets/output_rides_0"
-MANIFEST_DIR="/home/asl/datasets/manifests/frodobots_2k_phase2/full_dataset"
+DATASET_ROOT="${DATASET_ROOT:-$HOME/datasets/output_rides_0}"
+MANIFEST_DIR="${MANIFEST_DIR:-$HOME/datasets/manifests/frodobots_2k_phase2/full_dataset}"
 MANIFEST_PATH="$MANIFEST_DIR/manifest.csv"
-OUTPUT_DIR="/home/asl/datasets/outputs/frodobots_2k_phase2/semantic_alignment_audit"
+OUTPUT_DIR="${OUTPUT_DIR:-$HOME/datasets/outputs/frodobots_2k_phase2/semantic_alignment_audit}"
 
 if command -v python3 >/dev/null 2>&1; then
     PYTHON=python3

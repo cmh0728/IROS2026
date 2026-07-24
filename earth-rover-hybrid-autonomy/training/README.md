@@ -20,7 +20,7 @@ On the Dell Ubuntu host, run the complete focused verification with no arguments
 ./scripts/verify_phase1_manifest.sh
 ```
 
-The script uses `/home/asl/datasets/output_rides_0`, writes generated files outside Git under `/home/asl/datasets/manifests/`, and verifies that the raw dataset metadata is unchanged.
+The script uses `$HOME/datasets/output_rides_0`, writes generated files outside Git under `$HOME/datasets/manifests/`, and verifies that the raw dataset metadata is unchanged.
 
 ## FrodoBots-2K Phase 2 HLS Verification
 
@@ -30,7 +30,7 @@ On the Dell Ubuntu host, run the lazy HLS loader and visual verification with no
 ./scripts/verify_phase2_hls_loader.sh
 ```
 
-The script runs focused loader tests, decodes 20 deterministic manifest samples, verifies a `4x3x224x224` DataLoader batch, checks repeat access, and writes `aligned_samples.jpg` plus `hls_verification_report.json` under `/home/asl/datasets/outputs/frodobots_2k_phase2/`. Inspect the contact sheet manually before treating image-label alignment as validated.
+The script runs focused loader tests, decodes 20 deterministic manifest samples, verifies a `4x3x224x224` DataLoader batch, checks repeat access, and writes `aligned_samples.jpg` plus `hls_verification_report.json` under `$HOME/datasets/outputs/frodobots_2k_phase2/`. Inspect the contact sheet manually before treating image-label alignment as validated.
 
 Before Phase 3, run the full semantic and edge-case audit on Dell:
 
@@ -48,7 +48,7 @@ After Phase 2 passes, run the 200-sample GPU overfit gate on Dell:
 ./scripts/verify_phase3_tiny_overfit.sh
 ```
 
-The script selects 40 samples from each action class, caches only those decoded tensors in memory, fine-tunes an ImageNet-pretrained ResNet18, and verifies loss reduction, at least 95% training accuracy, checkpoint reload, deterministic inference, and raw-dataset immutability. The first run may download the torchvision ResNet18 weights. Outputs remain outside Git under `/home/asl/datasets/outputs/frodobots_2k_phase3/tiny_overfit/`.
+The script selects 40 samples from each action class, caches only those decoded tensors in memory, fine-tunes an ImageNet-pretrained ResNet18, and verifies loss reduction, at least 95% training accuracy, checkpoint reload, deterministic inference, and raw-dataset immutability. The first run may download the torchvision ResNet18 weights. Outputs remain outside Git under `$HOME/datasets/outputs/frodobots_2k_phase3/tiny_overfit/`.
 
 After the tiny-overfit gate passes, run the bounded 10/2/2 ride-level baseline:
 
@@ -56,7 +56,7 @@ After the tiny-overfit gate passes, run the bounded 10/2/2 ride-level baseline:
 ./scripts/run_phase3_small_baseline.sh
 ```
 
-The run uses at most 250 samples per ride, selects the best checkpoint by validation macro F1, evaluates the held-out test rides once, and writes `held_out_test_predictions.mp4` with ground truth, prediction, confidence, and control overlays. Metrics, the exact ride split, class distributions, and confusion matrices are stored in `small_baseline_report.json` under `/home/asl/datasets/outputs/frodobots_2k_phase3/small_baseline/`.
+The run uses at most 250 samples per ride, selects the best checkpoint by validation macro F1, evaluates the held-out test rides once, and writes `held_out_test_predictions.mp4` with ground truth, prediction, confidence, and control overlays. Metrics, the exact ride split, class distributions, and confusion matrices are stored in `small_baseline_report.json` under `$HOME/datasets/outputs/frodobots_2k_phase3/small_baseline/`.
 
 ## Traversability temporal review
 
@@ -96,7 +96,7 @@ Copy the self-contained bundle by running this on the Mac, replacing both placeh
 
 ```bash
 rsync -ah --progress \
-  asl@<DELL_TAILSCALE_IP>:/home/asl/datasets/review_bundles/traversability_pilot_v1/ \
+  <DELL_USER>@<DELL_TAILSCALE_IP>:~/datasets/review_bundles/traversability_pilot_v1/ \
   <MAC_DESTINATION>/traversability_pilot_v1/
 ```
 

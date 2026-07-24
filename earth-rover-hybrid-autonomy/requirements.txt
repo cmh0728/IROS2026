@@ -8,8 +8,13 @@ requests==2.32.3
 pytest==8.4.2
 datasets==4.5.0
 huggingface-hub==1.8.0
+transformers==5.4.0
+safetensors==0.7.0
+Pillow==11.3.0
 
 # Keep Mac development lightweight; provision CUDA training only on Ubuntu/Linux x86_64.
 --extra-index-url https://download.pytorch.org/whl/cu118
 torch==2.7.1+cu118; sys_platform == "linux" and platform_machine == "x86_64"
 torchvision==0.22.1+cu118; sys_platform == "linux" and platform_machine == "x86_64"
+
+# System dependency for QuickTime-compatible review videos: ffmpeg with libx264.

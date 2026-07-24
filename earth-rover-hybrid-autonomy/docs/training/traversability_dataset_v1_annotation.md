@@ -31,7 +31,7 @@ Copy the portable pilot from Dell to Mac using the macOS-compatible progress opt
 
 ```bash
 rsync -ah --progress \
-  asl@<DELL_TAILSCALE_IP>:/home/asl/datasets/generated/traversability_dataset_v1/pilot_20/ \
+  <DELL_USER>@<DELL_TAILSCALE_IP>:~/datasets/generated/traversability_dataset_v1/pilot_20/ \
   "$HOME/Desktop/traversability_dataset_v1_pilot_20/"
 ```
 
@@ -47,7 +47,7 @@ CVAT is selected because its standard [`Segmentation Mask 1.1`](https://docs.cva
 
 ```bash
 scp <MAC_CVAT_EXPORT_ZIP> \
-  asl@<DELL_TAILSCALE_IP>:/home/asl/datasets/generated/traversability_dataset_v1/cvat_export.zip
+  <DELL_USER>@<DELL_TAILSCALE_IP>:~/datasets/generated/traversability_dataset_v1/cvat_export.zip
 ```
 
 The Mac is for labeling only. Do not run dataset processing, validation, inference, or training there.

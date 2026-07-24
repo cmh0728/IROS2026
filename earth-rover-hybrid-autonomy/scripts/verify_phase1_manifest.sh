@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATASET_ROOT="${FRODOBOTS_DATASET_ROOT:-/home/asl/datasets/output_rides_0}"
-OUTPUT_DIR="${FRODOBOTS_MANIFEST_OUTPUT:-/home/asl/datasets/manifests/frodobots_2k_phase1/dell_verification_3rides}"
+DATASET_ROOT="${FRODOBOTS_DATASET_ROOT:-$HOME/datasets/output_rides_0}"
+OUTPUT_DIR="${FRODOBOTS_MANIFEST_OUTPUT:-$HOME/datasets/manifests/frodobots_2k_phase1/dell_verification_3rides}"
 
 if command -v python3 >/dev/null 2>&1; then
     PYTHON=python3

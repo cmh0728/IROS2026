@@ -1,7 +1,11 @@
 .DS_Store
-.env
-__pycache__/
 .vscode/
+.idea/
+.fleet/
+.history/
+.direnv/
+.envrc
+*.swp
 .openclaw/
 
 # Openclaw workspace files (personal config — templates are in examples/openclaw/)
@@ -48,18 +52,38 @@ datasets/*
 *.pt
 *.pth
 *.safetensors
+*.npy
+*.npz
+
+# Generated video, HLS, annotation export, and dataset archives.
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.m3u8
+**/recordings/*.ts
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.tgz
 
 .env
 .env.*
 !.env.example
 !.env.sample
+*.local.yaml
+*.local.yml
+*.local.json
+credentials*.json
+service-account*.json
 
 *.pem
 *.key
 *.p12
 *.pfx
 *.crt
-
 
 logs/
 *.log

@@ -2,10 +2,10 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATASET_ROOT="/home/asl/datasets/output_rides_0"
-MANIFEST_PATH="/home/asl/datasets/manifests/frodobots_2k_phase2/full_dataset/manifest.csv"
-TINY_REPORT="/home/asl/datasets/outputs/frodobots_2k_phase3/tiny_overfit/tiny_overfit_report.json"
-OUTPUT_DIR="/home/asl/datasets/outputs/frodobots_2k_phase3/small_baseline"
+DATASET_ROOT="${DATASET_ROOT:-$HOME/datasets/output_rides_0}"
+MANIFEST_PATH="${MANIFEST_PATH:-$HOME/datasets/manifests/frodobots_2k_phase2/full_dataset/manifest.csv}"
+TINY_REPORT="${TINY_REPORT:-$HOME/datasets/outputs/frodobots_2k_phase3/tiny_overfit/tiny_overfit_report.json}"
+OUTPUT_DIR="${OUTPUT_DIR:-$HOME/datasets/outputs/frodobots_2k_phase3/small_baseline}"
 export CUBLAS_WORKSPACE_CONFIG=":4096:8"
 
 if command -v python3 >/dev/null 2>&1; then
