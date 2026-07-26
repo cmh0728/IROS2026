@@ -1,0 +1,66 @@
+project:
+  mode: urban_traversability_replay
+  loop_hz: 10
+
+control:
+  linear_min: 0.0
+  linear_max: 0.25
+  angular_min: -0.55
+  angular_max: 0.55
+  base_linear: 0.20
+  heading_kp: 0.60
+  heading_kd: 0.03
+  local_goal_kp: 0.35
+  slow_heading_error_deg: 30
+  rotate_in_place_error_deg: 90
+  rotate_angular: 0.50
+  command_smoothing_alpha: 0.55
+  max_linear_delta_per_sec: 0.20
+  max_angular_delta_per_sec: 0.70
+
+perception:
+  obstacle_stop_threshold: 0.75
+
+safety:
+  enable_emergency_stop: true
+  frame_timeout_sec: 1.0
+  data_timeout_sec: 1.0
+  command_loop_delay_limit_sec: 0.5
+  sdk_failure_limit: 3
+
+recovery:
+  enabled: false
+
+traversability_adapter:
+  roi_top: 0.35
+  near_top: 0.72
+  sector_boundaries: [0.0, 0.34, 0.66, 1.0]
+  near_weight: 2.0
+  on_road_reward: 1.0
+  off_road_reward: 0.65
+  obstacle_penalty: 1.0
+  uncertainty_penalty: 0.55
+  low_confidence_threshold: 0.55
+  missing_confidence: 0.50
+  near_obstacle_stop_ratio: 0.45
+  confidence_stop_threshold: 0.25
+  candidate_heading_offsets_deg:
+    LEFT: 35
+    CENTER: 0
+    RIGHT: -35
+
+goal_aware_planner:
+  candidate_heading_offsets_deg:
+    LEFT: 35
+    CENTER: 0
+    RIGHT: -35
+  traversability_weight: 1.0
+  gps_alignment_weight: 0.45
+  obstacle_weight: 1.20
+  uncertainty_weight: 0.35
+  direction_change_penalty: 0.12
+  hysteresis_margin: 0.08
+  hard_obstacle_ratio: 0.55
+  low_confidence_slow_threshold: 0.55
+  low_confidence_speed_scale: 0.40
+  minimum_safe_score: 0.08

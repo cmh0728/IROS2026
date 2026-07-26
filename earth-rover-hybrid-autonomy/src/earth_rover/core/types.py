@@ -56,3 +56,48 @@ class CandidateDirection:
     turning_cost: float
     score: float
     debug: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class LocalTraversability:
+    """Planner-facing summary of a source-ID segmentation mask.
+
+    Scores are normalized to ``[0, 1]``. Obstacle ratios describe each
+    direction's configured driving ROI. ``near_obstacle_ratio`` describes the
+    lower center ROI, where an obstacle most directly blocks forward motion.
+    ``free_space_center`` is the center score before goal preference is added.
+    The recommendation is perception-only and never represents mission intent.
+    """
+
+    left_score: float
+    center_score: float
+    right_score: float
+    left_obstacle_ratio: float
+    center_obstacle_ratio: float
+    right_obstacle_ratio: float
+    near_obstacle_ratio: float
+    mean_confidence: float
+    free_space_center: float
+    recommended_direction: str
+    recommended_heading: float
+    stop_recommended: bool
+    reason: str
+    sector_debug: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class LocalPlan:
+    """Semantic local target selected before controller command conversion.
+
+    ``steering_target`` is a local heading offset in radians and
+    ``speed_target`` is a normalized ``[0, 1]`` speed scale. The existing
+    controller converts these values into bounded rover commands.
+    """
+
+    selected_direction: str
+    steering_target: float
+    speed_target: float
+    candidate_scores: dict[str, float]
+    mode: str
+    stop_requested: bool
+    reason: str

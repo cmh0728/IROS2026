@@ -74,6 +74,15 @@ Build the approved 153-image v2 dataset on Dell with `scripts/build_traversabili
 
 After inspecting the v2 split report, run `scripts/run_traversability_segformer_b0_v2.sh` explicitly on Dell. It initializes from the approved v1 best checkpoint, uses the lower learning rate in `configs/traversability_segformer_b0_v2.yaml`, and compares v1/v2 on the fixed v1 validation/test sets and the new holdout. A separate from-ADE baseline is optional and must use a different output directory by running `training/train_traversability_segformer.py` without `--initial-checkpoint`; it is not part of the default v2 workflow.
 
+After the v2 static and temporal overlays pass human review, run the first
+log-only planner integration with
+`scripts/run_traversability_planner_replay_v2.sh`. The script reuses the v2
+checkpoint loader, aspect-preserving preprocessing, HLS lazy decoder, H.264
+writer, Urban controller, safety monitor, and command filter. Raw FrodoBots
+recordings have no mission waypoint, so `GOAL_HEADING_ERROR_DEG` is an explicit
+fixed replay input rather than recorded GPS. Every output row records
+`command_transmitted=false`; this workflow does not import or call the SDK.
+
 ## Traversability Pseudo-Label Pilot
 
 The action baseline remains unchanged. Traversability pseudo-labeling is a separate research-only workflow using `nvidia/segformer-b0-finetuned-ade-512-512` as an annotation draft, never as verified ground truth or a rover controller.
