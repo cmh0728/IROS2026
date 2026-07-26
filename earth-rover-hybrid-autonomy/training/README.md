@@ -1,5 +1,17 @@
 # Offline Training Workflow
 
+## Frozen SegFormer v2 and official SAM-TP reproduction
+
+The approved SegFormer-B0 v2 baseline is logically frozen in
+`docs/experiments/segformer_b0_v2_frozen_baseline_20260726.md`. Its dataset,
+checkpoint, splits, and generated reports remain unchanged outside Git.
+
+The independent official SAM-TP setup, strict config/checkpoint compatibility
+gate, single-image benchmark, and deterministic FrodoBots review are documented
+in `docs/experiments/sam_tp_reproduction.md`. This is perception-only
+reproduction; it does not train SAM-TP or connect it to planning, the SDK, or a
+live rover.
+
 ## FrodoBots-2K Phase 1 Manifest
 
 Build a bounded three-ride manifest without decoding or extracting video frames:

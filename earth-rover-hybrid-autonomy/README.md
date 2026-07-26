@@ -54,6 +54,15 @@ Each dataset directory contains `planner_replay.mp4`,
 `review_manifest.json`. Generated data, checkpoints, and review videos remain
 outside Git.
 
+## Official SAM-TP Reproduction
+
+SegFormer-B0 v2 remains the frozen lightweight semantic baseline. The separate
+SAM-TP workflow reproduces only the official GeNIE perception model in an
+independent Dell Conda environment, applies a strict config/checkpoint gate, and
+produces single-image logits, benchmark data, and deterministic FrodoBots
+review videos. It does not train SAM-TP or connect it to the planner, SDK, or
+live rover. See `docs/experiments/sam_tp_reproduction.md`.
+
 ## Development order
 1. SDK client
 2. Logger

@@ -40,6 +40,7 @@ datasets/*
 /generated/
 /review_bundles/
 /experiments/
+/external/
 
 # Generated training artifacts stay on local/NAS storage.
 **/checkpoints/

@@ -1,0 +1,35 @@
+upstream:
+  repository_url: https://github.com/jiaming-ai/GENIE-SAMTP.git
+  branch: master
+  commit: 728aee296cf44288356de683b1948f18b05917d6
+  model_config: sam2/configs/sam2.1_inference_tiny/sam2.1_custom2.yaml
+  training_config: sam2/configs/sam2.1_training_tiny/sam2_training_custom2_freezeNoneNone_f57.yaml
+  checkpoint: sam2_logs/configs/sam2.1_training_tiny/sam2_training_custom2_freezeNoneNone_f57.yaml/checkpoints/checkpoint_2.pt
+
+runtime:
+  device: cuda
+  input_size: 1024
+  output_directory: null
+  seed: 20260724
+  score_conversion: sigmoid
+  dependency_setup_method: independent_conda_from_upstream_environment_yml
+
+benchmark:
+  warmup_iterations: 10
+  measured_iterations: 50
+  batch_size: 1
+  precision: fp32
+
+video_review:
+  rides_per_dataset: 5
+  seconds_per_ride: 60
+  output_fps: 10
+  edge_margin_seconds: 10
+  maximum_frame_gap_seconds: 0.25
+  panel_width: 480
+  visualization:
+    colormap: jet
+    high_score_color: red
+    low_score_color: blue
+    overlay_image_weight: 0.55
+    overlay_heatmap_weight: 0.45
