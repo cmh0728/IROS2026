@@ -84,6 +84,20 @@ else
   env_python() {
     "$VENV_PATH/bin/python" "$@"
   }
+  if ! env_python -m pip --version >/dev/null 2>&1; then
+    echo "pip is missing from the existing SAM-TP venv; attempting ensurepip recovery."
+    if ! env_python -m ensurepip --upgrade; then
+      cat >&2 <<EOF
+ERROR: The SAM-TP venv exists but cannot bootstrap pip.
+On Ubuntu 22.04 install the matching venv package, then rerun:
+
+sudo apt update
+sudo apt install -y python3.10-venv
+./scripts/setup_sam_tp_reproduction.sh
+EOF
+      exit 2
+    fi
+  fi
   env_python -m pip install -r "$UPSTREAM_ROOT/requirements.txt"
 fi
 env_python -c "import sys; assert sys.version_info[:2] == (3, 10), sys.version"
