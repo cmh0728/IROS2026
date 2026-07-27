@@ -5,6 +5,8 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE_ROOT="$(cd "$PROJECT_ROOT/.." && pwd)"
 UPSTREAM_ROOT="${UPSTREAM_ROOT:-$WORKSPACE_ROOT/external/GENIE-SAMTP}"
 ENV_NAME="${ENV_NAME:-sam_tp_repro}"
+ENV_BACKEND="${ENV_BACKEND:-auto}"
+VENV_PATH="${VENV_PATH:-$WORKSPACE_ROOT/external/venvs/$ENV_NAME}"
 PROJECT_PYTHON="${PROJECT_PYTHON:-python3}"
 CONFIG="${CONFIG:-$PROJECT_ROOT/configs/sam_tp_reproduction.yaml}"
 CHECKPOINT="${CHECKPOINT:-$UPSTREAM_ROOT/sam2_logs/configs/sam2.1_training_tiny/sam2_training_custom2_freezeNoneNone_f57.yaml/checkpoints/checkpoint_2.pt}"
@@ -29,10 +31,38 @@ if [[ -e "$OUTPUT_ROOT" || -e "$VIDEO_OUTPUT" ]]; then
   echo "ERROR: Run output already exists; choose a new RUN_ID." >&2
   exit 2
 fi
-if ! command -v conda >/dev/null 2>&1; then
-  echo "ERROR: conda is unavailable." >&2
+if [[ "$ENV_BACKEND" == "auto" ]]; then
+  if command -v conda >/dev/null 2>&1 \
+    && conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
+    ENV_BACKEND="conda"
+  elif [[ -x "$VENV_PATH/bin/python" ]]; then
+    ENV_BACKEND="venv"
+  else
+    echo "ERROR: No SAM-TP Conda environment or venv was found; run setup first." >&2
+    exit 2
+  fi
+fi
+if [[ "$ENV_BACKEND" == "conda" ]]; then
+  if ! command -v conda >/dev/null 2>&1; then
+    echo "ERROR: ENV_BACKEND=conda was requested but conda is unavailable." >&2
+    exit 2
+  fi
+  env_python() {
+    conda run --no-capture-output -n "$ENV_NAME" python "$@"
+  }
+elif [[ "$ENV_BACKEND" == "venv" ]]; then
+  if [[ ! -x "$VENV_PATH/bin/python" ]]; then
+    echo "ERROR: SAM-TP venv is missing: $VENV_PATH" >&2
+    exit 2
+  fi
+  env_python() {
+    "$VENV_PATH/bin/python" "$@"
+  }
+else
+  echo "ERROR: ENV_BACKEND must be auto, conda, or venv." >&2
   exit 2
 fi
+export SAM_TP_ENVIRONMENT_BACKEND="$ENV_BACKEND"
 for command_name in ffmpeg ffprobe; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     echo "ERROR: $command_name is required for the QuickTime review video." >&2
@@ -51,8 +81,7 @@ before_checkpoint_sha="$(sha256sum "$CHECKPOINT" | awk '{print $1}')"
 mkdir -p "$OUTPUT_ROOT"
 
 echo "[1/7] Running checkpoint-free SAM-TP unit tests"
-PYTHONDONTWRITEBYTECODE=1 conda run --no-capture-output -n "$ENV_NAME" \
-  python -m pytest -p no:cacheprovider -q \
+PYTHONDONTWRITEBYTECODE=1 env_python -m pytest -p no:cacheprovider -q \
   "$PROJECT_ROOT/tests/test_sam_tp_reproduction.py" \
   "$PROJECT_ROOT/tests/test_traversability_video_review_v2.py"
 
@@ -61,7 +90,7 @@ PYTHONDONTWRITEBYTECODE=1 "$PROJECT_PYTHON" -m pytest -p no:cacheprovider -q \
   "$PROJECT_ROOT/tests"
 
 echo "[3/7] Strictly checking training config, inference config, and checkpoint"
-conda run --no-capture-output -n "$ENV_NAME" python \
+env_python \
   "$PROJECT_ROOT/training/inspect_sam_tp_compatibility.py" \
   --reproduction-config "$CONFIG" \
   --upstream-root "$UPSTREAM_ROOT" \
@@ -72,10 +101,9 @@ echo "[4/7] Running one-image CUDA smoke inference and benchmark"
 SAM_TP_UPSTREAM_ROOT="$UPSTREAM_ROOT" \
 SAM_TP_CHECKPOINT="$CHECKPOINT" \
 SAM_TP_SMOKE_IMAGE="$SMOKE_IMAGE" \
-PYTHONDONTWRITEBYTECODE=1 conda run --no-capture-output -n "$ENV_NAME" \
-  python -m pytest -p no:cacheprovider -q \
+PYTHONDONTWRITEBYTECODE=1 env_python -m pytest -p no:cacheprovider -q \
   "$PROJECT_ROOT/tests/test_sam_tp_integration.py"
-conda run --no-capture-output -n "$ENV_NAME" python \
+env_python \
   "$PROJECT_ROOT/training/run_sam_tp_smoke.py" \
   --image "$SMOKE_IMAGE" \
   --reproduction-config "$CONFIG" \
@@ -85,7 +113,7 @@ conda run --no-capture-output -n "$ENV_NAME" python \
   --output-dir "$OUTPUT_ROOT/single_image"
 
 echo "[5/7] Running deterministic FrodoBots CUDA review"
-conda run --no-capture-output -n "$ENV_NAME" python \
+env_python \
   "$PROJECT_ROOT/training/run_sam_tp_video_review.py" \
   --reproduction-config "$CONFIG" \
   --upstream-root "$UPSTREAM_ROOT" \
@@ -100,7 +128,7 @@ conda run --no-capture-output -n "$ENV_NAME" python \
   --seconds-per-ride "$SECONDS_PER_RIDE"
 
 echo "[6/7] Writing machine-readable and Markdown reproduction reports"
-conda run --no-capture-output -n "$ENV_NAME" python \
+env_python \
   "$PROJECT_ROOT/training/write_sam_tp_reproduction_report.py" \
   --compatibility-report "$OUTPUT_ROOT/compatibility_report.json" \
   --smoke-report "$OUTPUT_ROOT/single_image/metadata.json" \

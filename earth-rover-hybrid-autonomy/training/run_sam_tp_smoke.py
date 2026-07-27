@@ -171,7 +171,10 @@ def main(argv: list[str] | None = None) -> int:
                 "reserved": torch.cuda.max_memory_reserved(),
             },
             "environment": environment_report(),
-            "dependency_setup_method": runtime["dependency_setup_method"],
+            "dependency_setup_method": os.environ.get(
+                "SAM_TP_ENVIRONMENT_BACKEND",
+                runtime["dependency_setup_method"],
+            ),
             "upstream": git_provenance(paths["root"]),
             "checkpoint": compatibility["checkpoint"],
             "compatibility_report": str(compatibility_path),

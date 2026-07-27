@@ -27,17 +27,19 @@ or deployment.
 ## Independent Dell setup
 
 The setup script clones upstream under the ignored workspace `external/`
-directory and creates a separate Conda environment. It does not upgrade the
-Earth Rover/SegFormer environment.
+directory. It uses a separate Conda environment when Conda is installed;
+otherwise it creates `external/venvs/sam_tp_repro` with Python's `venv`.
+Neither path upgrades the Earth Rover/SegFormer environment.
 
 ```bash
 cd ~/IROS2026/earth-rover-hybrid-autonomy
 ./scripts/setup_sam_tp_reproduction.sh
 ```
 
-The official `environment.yml` omits PyTorch. If the script reports that
-PyTorch is absent, inspect `nvidia-smi`, then explicitly install the known Dell
-baseline runtime in the new environment:
+The Conda path uses the official `environment.yml`; the venv path installs the
+official `requirements.txt`. Both upstream definitions omit PyTorch. If the
+script reports that PyTorch is absent, inspect `nvidia-smi`, then explicitly
+install the known Dell baseline runtime in the new environment:
 
 ```bash
 INSTALL_TORCH=true \
@@ -50,6 +52,14 @@ TORCH_INDEX_URL=https://download.pytorch.org/whl/cu118 \
 This uses a stable CUDA 11.8 wheel and does not install the README's CUDA 12.8
 nightly example. The NVIDIA driver's displayed CUDA compatibility version and
 PyTorch's bundled CUDA runtime are recorded separately.
+
+If Ubuntu reports that `venv` cannot be created, install its standard Python
+3.10 venv package once and rerun:
+
+```bash
+sudo apt install python3.10-venv
+./scripts/setup_sam_tp_reproduction.sh
+```
 
 Download `checkpoint_2.pt` manually from the official Google Drive folder and
 place it at the exact expected path printed by the setup script. Do not rename,

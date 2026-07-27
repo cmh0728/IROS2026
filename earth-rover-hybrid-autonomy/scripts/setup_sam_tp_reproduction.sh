@@ -5,6 +5,9 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE_ROOT="$(cd "$PROJECT_ROOT/.." && pwd)"
 UPSTREAM_ROOT="${UPSTREAM_ROOT:-$WORKSPACE_ROOT/external/GENIE-SAMTP}"
 ENV_NAME="${ENV_NAME:-sam_tp_repro}"
+ENV_BACKEND="${ENV_BACKEND:-auto}"
+VENV_PATH="${VENV_PATH:-$WORKSPACE_ROOT/external/venvs/$ENV_NAME}"
+PYTHON_BOOTSTRAP="${PYTHON_BOOTSTRAP:-python3}"
 UPSTREAM_URL="https://github.com/jiaming-ai/GENIE-SAMTP.git"
 UPSTREAM_BRANCH="master"
 UPSTREAM_COMMIT="728aee296cf44288356de683b1948f18b05917d6"
@@ -17,9 +20,23 @@ if ! command -v nvidia-smi >/dev/null 2>&1; then
 fi
 nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
 
-if ! command -v conda >/dev/null 2>&1; then
-  echo "ERROR: conda is required because the official environment.yml is present." >&2
-  echo "Install Miniconda/Conda, then rerun this script." >&2
+if [[ "$ENV_BACKEND" == "auto" ]]; then
+  if command -v conda >/dev/null 2>&1; then
+    ENV_BACKEND="conda"
+  else
+    ENV_BACKEND="venv"
+  fi
+fi
+if [[ "$ENV_BACKEND" != "conda" && "$ENV_BACKEND" != "venv" ]]; then
+  echo "ERROR: ENV_BACKEND must be auto, conda, or venv." >&2
+  exit 2
+fi
+if [[ "$ENV_BACKEND" == "conda" ]] && ! command -v conda >/dev/null 2>&1; then
+  echo "ERROR: ENV_BACKEND=conda was requested but conda is unavailable." >&2
+  exit 2
+fi
+if [[ "$ENV_BACKEND" == "venv" ]] && ! command -v "$PYTHON_BOOTSTRAP" >/dev/null 2>&1; then
+  echo "ERROR: Python bootstrap executable is unavailable: $PYTHON_BOOTSTRAP" >&2
   exit 2
 fi
 
@@ -48,17 +65,34 @@ if [[ "$(git -C "$UPSTREAM_ROOT" rev-parse HEAD)" != "$UPSTREAM_COMMIT" ]]; then
   exit 2
 fi
 
-if ! conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
-  conda env create --name "$ENV_NAME" --file "$UPSTREAM_ROOT/environment.yml"
+if [[ "$ENV_BACKEND" == "conda" ]]; then
+  if ! conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
+    conda env create --name "$ENV_NAME" --file "$UPSTREAM_ROOT/environment.yml"
+  fi
+  env_python() {
+    conda run --no-capture-output -n "$ENV_NAME" python "$@"
+  }
+else
+  "$PYTHON_BOOTSTRAP" -c \
+    "import sys; assert sys.version_info[:2] == (3, 10), sys.version"
+  if [[ ! -x "$VENV_PATH/bin/python" ]]; then
+    if ! "$PYTHON_BOOTSTRAP" -m venv "$VENV_PATH"; then
+      echo "ERROR: Could not create venv. On Ubuntu 22.04 install python3.10-venv, then rerun." >&2
+      exit 2
+    fi
+  fi
+  env_python() {
+    "$VENV_PATH/bin/python" "$@"
+  }
+  env_python -m pip install -r "$UPSTREAM_ROOT/requirements.txt"
 fi
-conda run --no-capture-output -n "$ENV_NAME" python -c \
-  "import sys; assert sys.version_info[:2] == (3, 10), sys.version"
+env_python -c "import sys; assert sys.version_info[:2] == (3, 10), sys.version"
 
-if ! conda run --no-capture-output -n "$ENV_NAME" python -c "import torch, torchvision" >/dev/null 2>&1; then
+if ! env_python -c "import torch, torchvision" >/dev/null 2>&1; then
   if [[ "${INSTALL_TORCH:-false}" != "true" ]]; then
     cat >&2 <<EOF
-ERROR: PyTorch is absent from the independent '$ENV_NAME' environment.
-The official environment.yml intentionally omits PyTorch.
+ERROR: PyTorch is absent from the independent '$ENV_NAME' $ENV_BACKEND environment.
+The official upstream environment definitions intentionally omit PyTorch.
 
 Verify the Dell driver first with: nvidia-smi
 Then rerun explicitly, without changing the existing Earth Rover environment:
@@ -72,13 +106,13 @@ EOF
   TORCH_VERSION="${TORCH_VERSION:-2.7.1}"
   TORCHVISION_VERSION="${TORCHVISION_VERSION:-0.22.1}"
   TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu118}"
-  conda run --no-capture-output -n "$ENV_NAME" python -m pip install \
+  env_python -m pip install \
     "torch==$TORCH_VERSION" "torchvision==$TORCHVISION_VERSION" \
     --index-url "$TORCH_INDEX_URL"
 fi
 
-conda run --no-capture-output -n "$ENV_NAME" python -m pip install -e "$UPSTREAM_ROOT"
-conda run --no-capture-output -n "$ENV_NAME" python -m pip install "pytest==8.4.2"
+env_python -m pip install -e "$UPSTREAM_ROOT"
+env_python -m pip install "pytest==8.4.2"
 
 checkpoint="$UPSTREAM_ROOT/$CHECKPOINT_RELATIVE"
 if [[ ! -f "$checkpoint" ]]; then
@@ -100,7 +134,12 @@ EOF
 fi
 
 echo "SAM-TP setup ready"
-echo "Environment: $ENV_NAME"
+echo "Environment backend: $ENV_BACKEND"
+if [[ "$ENV_BACKEND" == "conda" ]]; then
+  echo "Environment: $ENV_NAME"
+else
+  echo "Environment: $VENV_PATH"
+fi
 echo "Upstream: $UPSTREAM_ROOT"
 echo "Commit: $(git -C "$UPSTREAM_ROOT" rev-parse HEAD)"
 echo "Checkpoint: $checkpoint"
