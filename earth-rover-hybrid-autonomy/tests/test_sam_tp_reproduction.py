@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 import yaml
 
+import training.sam_tp_reproduction as sam_tp_reproduction
 from training.inspect_sam_tp_compatibility import compare_architecture_configs
 from training.run_sam_tp_video_review import compose_sam_tp_panels, process_dataset
 from training.sam_tp_reproduction import (
@@ -20,6 +21,7 @@ from training.sam_tp_reproduction import (
     SamTpPrediction,
     SamTpPredictor,
     compare_state_dicts,
+    environment_report,
     load_reproduction_config,
     resolve_upstream_paths,
     score_to_heatmap,
@@ -338,6 +340,47 @@ def test_manifest_serialization_is_stable(tmp_path: Path) -> None:
 
     assert path.read_text(encoding="utf-8").startswith('{\n  "a"')
     assert json.loads(path.read_text(encoding="utf-8")) == {"a": [2, 3], "z": 1}
+
+
+def test_environment_report_converts_version_subclasses_to_plain_strings(
+    monkeypatch,
+) -> None:
+    class VersionString(str):
+        pass
+
+    class FakeCuda:
+        @staticmethod
+        def is_available() -> bool:
+            return True
+
+        @staticmethod
+        def get_device_name(_: int) -> VersionString:
+            return VersionString("GPU")
+
+    class FakeTorch:
+        __version__ = VersionString("2.7.1+cu118")
+        version = type("Version", (), {"cuda": VersionString("11.8")})()
+        cuda = FakeCuda()
+
+    class FakeTorchvision:
+        __version__ = VersionString("0.22.1+cu118")
+
+    modules = {"torch": FakeTorch(), "torchvision": FakeTorchvision()}
+    monkeypatch.setattr(
+        sam_tp_reproduction.importlib,
+        "import_module",
+        lambda name: modules[name],
+    )
+    monkeypatch.setattr(sam_tp_reproduction, "_command_output", lambda _: None)
+    monkeypatch.setattr(sam_tp_reproduction, "_nvidia_cuda_version", lambda: None)
+
+    report = environment_report()
+
+    assert type(report["torch"]) is str
+    assert type(report["torchvision"]) is str
+    assert type(report["torch_cuda_runtime"]) is str
+    assert type(report["gpu_name"]) is str
+    yaml.safe_dump(report)
 
 
 def test_aggregate_report_requires_every_reproduction_gate() -> None:

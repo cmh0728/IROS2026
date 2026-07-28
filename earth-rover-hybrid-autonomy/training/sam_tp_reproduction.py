@@ -343,12 +343,16 @@ def environment_report(device: str = "cuda") -> dict[str, Any]:
         torchvision = importlib.import_module("torchvision")
         report.update(
             {
-                "torch": torch.__version__,
-                "torchvision": torchvision.__version__,
-                "torch_cuda_runtime": torch.version.cuda,
+                "torch": str(torch.__version__),
+                "torchvision": str(torchvision.__version__),
+                "torch_cuda_runtime": (
+                    str(torch.version.cuda) if torch.version.cuda is not None else None
+                ),
                 "cuda_available": bool(torch.cuda.is_available()),
                 "gpu_name": (
-                    torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
+                    str(torch.cuda.get_device_name(0))
+                    if torch.cuda.is_available()
+                    else None
                 ),
             }
         )
