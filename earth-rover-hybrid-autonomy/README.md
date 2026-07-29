@@ -63,6 +63,23 @@ produces single-image logits, benchmark data, and deterministic FrodoBots
 review videos. It does not train SAM-TP or connect it to the planner, SDK, or
 live rover. See `docs/experiments/sam_tp_reproduction.md`.
 
+### Read-only SDK shadow dashboard
+
+The first SDK integration stage fetches the live front frame and telemetry,
+runs SAM-TP once per frame, and displays original, overlay, score, telemetry,
+and latency panels. It calls only camera/data reads and has no control or
+mission endpoint:
+
+```bash
+MAX_FRAMES=100 HEADLESS=true ./scripts/run_sam_tp_sdk_shadow.sh
+```
+
+Omit `HEADLESS=true` on the Dell desktop to open the OpenCV dashboard. Outputs
+are written under
+`$HOME/datasets/review_bundles/sam_tp_sdk_shadow/<RUN_ID>/`. Every record sets
+`command_transmitted=false`. This is perception shadow mode, not planner
+integration or autonomous driving.
+
 ## Development order
 1. SDK client
 2. Logger
