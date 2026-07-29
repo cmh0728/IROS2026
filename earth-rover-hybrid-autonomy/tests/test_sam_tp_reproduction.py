@@ -260,7 +260,10 @@ def test_video_render_has_three_aspect_preserved_panels() -> None:
     assert not np.array_equal(heatmap[:, 0], heatmap[:, -1])
 
 
-def test_mock_video_processing_records_frames_latency_and_no_control(tmp_path: Path) -> None:
+def test_mock_video_processing_records_frames_latency_and_no_control(
+    tmp_path: Path,
+    capsys,
+) -> None:
     frame = ReviewFrame(
         dataset="output_rides_0",
         ride_id="7",
@@ -332,6 +335,9 @@ def test_mock_video_processing_records_frames_latency_and_no_control(tmp_path: P
     assert report["sdk_or_live_rover_commands_sent"] is False
     assert report["output_file_path"] == str(tmp_path / "final/sam_tp_review.mp4")
     assert len(rows) == 1
+    output = capsys.readouterr().out
+    assert "dataset=dataset requested_frames=1 segments=1" in output
+    assert "progress=1/1 processed=1 failed=0" in output
 
 
 def test_manifest_serialization_is_stable(tmp_path: Path) -> None:

@@ -159,6 +159,12 @@ def process_dataset(
     processed = 0
     failures: list[dict[str, object]] = []
     latencies: list[float] = []
+    requested = sum(len(segment.frames) for segment in segments)
+    print(
+        f"dataset={dataset_root.name} requested_frames={requested} "
+        f"segments={len(segments)}",
+        flush=True,
+    )
     wall_started = time.monotonic()
     with statistics_path.open("w", encoding="utf-8") as statistics:
         try:
@@ -177,6 +183,15 @@ def process_dataset(
                                 "error": str(exc),
                             }
                         )
+                        attempted = processed + len(failures)
+                        if attempted % 25 == 0 or attempted == requested:
+                            print(
+                                f"dataset={dataset_root.name} "
+                                f"progress={attempted}/{requested} "
+                                f"processed={processed} failed={len(failures)} "
+                                f"ride={frame.ride_id} frame={frame.frame_id}",
+                                flush=True,
+                            )
                         continue
                     elapsed = time.monotonic() - wall_started
                     measured_fps = (processed + 1) / elapsed if elapsed else 0.0
@@ -218,6 +233,14 @@ def process_dataset(
                     )
                     processed += 1
                     latencies.append(prediction.inference_time_ms)
+                    attempted = processed + len(failures)
+                    if attempted % 25 == 0 or attempted == requested:
+                        print(
+                            f"dataset={dataset_root.name} progress={attempted}/{requested} "
+                            f"processed={processed} failed={len(failures)} "
+                            f"ride={frame.ride_id} frame={frame.frame_id}",
+                            flush=True,
+                        )
         finally:
             video_info = writer.close() if writer is not None else {}
     wall_seconds = time.monotonic() - wall_started
@@ -235,7 +258,7 @@ def process_dataset(
             for segment in segments
         ],
         "skipped_rides": skipped_rides,
-        "requested_frame_count": sum(len(segment.frames) for segment in segments),
+        "requested_frame_count": requested,
         "processed_frame_count": processed,
         "skipped_frame_count": len(failures),
         "skipped_frames": failures,
