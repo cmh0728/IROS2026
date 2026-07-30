@@ -57,10 +57,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--checkpoint")
     parser.add_argument("--compatibility-report", required=True)
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--datasets", nargs="+", default=("0",), choices=("all", "0", "1", "2"))
+    parser.add_argument(
+        "--datasets",
+        nargs="+",
+        default=("0",),
+        help="Numeric output_rides indexes to process, or all for 0, 1, and 2.",
+    )
     parser.add_argument("--dataset-root-0", default=str(DATASET_DEFAULTS["0"]))
     parser.add_argument("--dataset-root-1", default=str(DATASET_DEFAULTS["1"]))
     parser.add_argument("--dataset-root-2", default=str(DATASET_DEFAULTS["2"]))
+    parser.add_argument(
+        "--dataset-root",
+        action="append",
+        default=[],
+        metavar="INDEX=PATH",
+        help="Override a dataset root by numeric index; may be repeated.",
+    )
     parser.add_argument("--rides-per-dataset", type=int)
     parser.add_argument("--seconds-per-ride", type=float)
     parser.add_argument("--output-fps", type=float)
@@ -69,6 +81,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--panel-width", type=int)
     parser.add_argument("--seed", type=int)
     return parser.parse_args(argv)
+
+
+def resolve_dataset_roots(
+    indexes: tuple[str, ...],
+    legacy_roots: dict[str, str | Path],
+    overrides: list[str],
+) -> dict[str, Path]:
+    roots = {
+        index: Path(path).expanduser().resolve()
+        for index, path in legacy_roots.items()
+    }
+    seen: set[str] = set()
+    for value in overrides:
+        index, separator, path = value.partition("=")
+        if not separator or not index.isdigit() or not path:
+            raise ValueError("dataset-root must use numeric INDEX=PATH syntax")
+        if index in seen:
+            raise ValueError(f"duplicate dataset-root override: {index}")
+        seen.add(index)
+        roots[index] = Path(path).expanduser().resolve()
+    for index in indexes:
+        if not index.isdigit():
+            raise ValueError(f"dataset index must be numeric: {index}")
+        roots.setdefault(
+            index,
+            Path(f"~/datasets/output_rides_{index}").expanduser().resolve(),
+        )
+    return roots
 
 
 def fit_rgb(image: np.ndarray, width: int, height: int) -> np.ndarray:
@@ -289,11 +329,18 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("checkpoint differs from the strict compatibility report")
     settings = config["video_review"]
     indexes = selected_dataset_indexes(args.datasets)
-    roots = {
-        "0": Path(args.dataset_root_0).expanduser().resolve(),
-        "1": Path(args.dataset_root_1).expanduser().resolve(),
-        "2": Path(args.dataset_root_2).expanduser().resolve(),
-    }
+    try:
+        roots = resolve_dataset_roots(
+            indexes,
+            {
+                "0": args.dataset_root_0,
+                "1": args.dataset_root_1,
+                "2": args.dataset_root_2,
+            },
+            args.dataset_root,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     values = {
         "rides_per_dataset": args.rides_per_dataset or int(settings["rides_per_dataset"]),
         "seconds_per_ride": args.seconds_per_ride or float(settings["seconds_per_ride"]),

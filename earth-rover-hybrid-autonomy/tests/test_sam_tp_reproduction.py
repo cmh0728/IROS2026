@@ -10,7 +10,12 @@ import yaml
 
 import training.sam_tp_reproduction as sam_tp_reproduction
 from training.inspect_sam_tp_compatibility import compare_architecture_configs
-from training.run_sam_tp_video_review import compose_sam_tp_panels, process_dataset
+from training.run_sam_tp_video_review import (
+    compose_sam_tp_panels,
+    parse_args as parse_video_review_args,
+    process_dataset,
+    resolve_dataset_roots,
+)
 from training.sam_tp_reproduction import (
     OFFICIAL_BRANCH,
     OFFICIAL_CHECKPOINT,
@@ -258,6 +263,63 @@ def test_video_render_has_three_aspect_preserved_panels() -> None:
     heatmap = score_to_heatmap(score)
     assert heatmap.shape == image.shape
     assert not np.array_equal(heatmap[:, 0], heatmap[:, -1])
+
+
+def test_sam_tp_video_review_accepts_additional_numeric_datasets(
+    tmp_path: Path,
+) -> None:
+    args = parse_video_review_args(
+        [
+            "--reproduction-config",
+            "config.yaml",
+            "--upstream-root",
+            "upstream",
+            "--compatibility-report",
+            "compatibility.json",
+            "--output-dir",
+            "output",
+            "--datasets",
+            "9",
+            "20",
+            "--dataset-root",
+            f"9={tmp_path / 'rides_9'}",
+            "--dataset-root",
+            f"20={tmp_path / 'rides_20'}",
+        ]
+    )
+    roots = resolve_dataset_roots(
+        tuple(args.datasets),
+        {
+            "0": args.dataset_root_0,
+            "1": args.dataset_root_1,
+            "2": args.dataset_root_2,
+        },
+        args.dataset_root,
+    )
+
+    assert args.datasets == ["9", "20"]
+    assert roots["9"] == (tmp_path / "rides_9").resolve()
+    assert roots["20"] == (tmp_path / "rides_20").resolve()
+
+
+@pytest.mark.parametrize(
+    "override,error",
+    [
+        ("9", "INDEX=PATH"),
+        ("name=/tmp/data", "numeric"),
+        ("9=/tmp/first", "duplicate"),
+    ],
+)
+def test_sam_tp_dataset_root_override_rejects_invalid_values(
+    override: str,
+    error: str,
+) -> None:
+    overrides = [override]
+    if error == "duplicate":
+        overrides.append("9=/tmp/second")
+
+    with pytest.raises(ValueError, match=error):
+        resolve_dataset_roots(("9",), {}, overrides)
 
 
 def test_mock_video_processing_records_frames_latency_and_no_control(

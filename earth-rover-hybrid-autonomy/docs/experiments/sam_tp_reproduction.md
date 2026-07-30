@@ -93,6 +93,17 @@ SECONDS_PER_RIDE=60 \
 ./scripts/run_sam_tp_reproduction.sh
 ```
 
+Additional numeric `output_rides_<N>` roots use the same convention and may be
+overridden with `DATASET_ROOT_<N>`:
+
+```bash
+RUN_ID=sam_tp_extra_$(date -u +%Y%m%dT%H%M%SZ) \
+DATASETS="9 20" \
+RIDES_PER_DATASET=3 \
+SECONDS_PER_RIDE=30 \
+./scripts/run_sam_tp_reproduction.sh
+```
+
 The generated `review_manifest.json` is the authoritative input-selection
 record. The tracked repository does not contain the prior generated SegFormer
 manifest, so equality must be confirmed on Dell by comparing each dataset's

@@ -74,6 +74,21 @@ if [[ "$(ffmpeg -hide_banner -encoders 2>/dev/null)" != *libx264* ]]; then
   exit 2
 fi
 read -r -a dataset_arguments <<< "$DATASETS"
+if [[ "${#dataset_arguments[@]}" -eq 1 && "${dataset_arguments[0]}" == "all" ]]; then
+  dataset_root_indexes=(0 1 2)
+else
+  dataset_root_indexes=("${dataset_arguments[@]}")
+fi
+dataset_root_arguments=()
+for dataset_index in "${dataset_root_indexes[@]}"; do
+  if [[ ! "$dataset_index" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: DATASETS must contain numeric indexes or only 'all'." >&2
+    exit 2
+  fi
+  variable_name="DATASET_ROOT_${dataset_index}"
+  dataset_root="${!variable_name:-$HOME/datasets/output_rides_${dataset_index}}"
+  dataset_root_arguments+=(--dataset-root "$dataset_index=$dataset_root")
+done
 cd "$PROJECT_ROOT"
 before_git_status="$(git status --porcelain)"
 before_checkpoint_sha="$(sha256sum "$CHECKPOINT" | awk '{print $1}')"
@@ -124,6 +139,7 @@ env_python \
   --dataset-root-0 "$DATASET_ROOT_0" \
   --dataset-root-1 "$DATASET_ROOT_1" \
   --dataset-root-2 "$DATASET_ROOT_2" \
+  "${dataset_root_arguments[@]}" \
   --rides-per-dataset "$RIDES_PER_DATASET" \
   --seconds-per-ride "$SECONDS_PER_RIDE"
 
