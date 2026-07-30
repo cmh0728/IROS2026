@@ -25,3 +25,16 @@ def test_runner_auto_detects_conda_or_venv_without_system_install() -> None:
     assert 'elif [[ -x "$VENV_PATH/bin/python" ]]' in script
     assert '"$VENV_PATH/bin/python" "$@"' in script
     assert 'export SAM_TP_ENVIRONMENT_BACKEND="$ENV_BACKEND"' in script
+
+
+def test_trajectory_primitive_runner_is_checkpoint_free_and_read_only() -> None:
+    script = (ROOT / "scripts/run_sam_tp_trajectory_primitives.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "tests/test_sam_tp_adapter.py" in script
+    assert "tests/test_trajectory_sampler.py" in script
+    assert "ConstantCurvatureTrajectorySampler" in script
+    assert "no CUDA or rover command" in script
+    assert "checkpoint_2.pt" not in script
+    assert ".send_control(" not in script

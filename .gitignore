@@ -93,3 +93,6 @@ AGENTS.md
 # Local telemetry samples may contain rover signatures and coordinates.
 /info/data_sample.txt
 /info/telemetry_info.md
+
+# Separately cloned repository; never include it in this workspace repository.
+/frodobots-earth-rover/

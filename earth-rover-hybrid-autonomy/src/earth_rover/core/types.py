@@ -101,3 +101,40 @@ class LocalPlan:
     mode: str
     stop_requested: bool
     reason: str
+
+
+@dataclass(frozen=True)
+class TraversabilityOutput:
+    """Validated continuous traversability evidence in source-frame geometry.
+
+    ``score_map`` is float32 in ``[0, 1]`` where larger values mean stronger
+    SAM-TP traversability evidence. ``confidence`` is the valid-pixel fraction,
+    a data-quality indicator rather than a calibrated model probability.
+    """
+
+    score_map: np.ndarray
+    valid_mask: np.ndarray
+    confidence: float
+    frame_timestamp: float
+    inference_time_ms: float
+    model_version: str
+
+
+@dataclass(frozen=True)
+class CandidateTrajectory:
+    """Constant-curvature path sampled in the rover base frame.
+
+    The base frame uses ``+x`` forward and ``+y`` left. Positive curvature
+    turns left. Distances are path arc lengths from zero through
+    ``horizon_m``. Boundaries include rover width and the configured safety
+    margin, but have not been projected into an image.
+    """
+
+    curvature: float
+    points_xy: np.ndarray
+    headings_rad: np.ndarray
+    horizon_m: float
+    sample_distances_m: np.ndarray
+    left_boundary_xy: np.ndarray
+    right_boundary_xy: np.ndarray
+    effective_half_width_m: float
