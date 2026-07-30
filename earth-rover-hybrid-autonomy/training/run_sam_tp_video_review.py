@@ -15,8 +15,9 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+for import_root in (ROOT, ROOT / "src"):
+    if str(import_root) not in sys.path:
+        sys.path.insert(0, str(import_root))
 
 from training.run_traversability_video_review_v2 import (
     ExistingHlsDecoder,

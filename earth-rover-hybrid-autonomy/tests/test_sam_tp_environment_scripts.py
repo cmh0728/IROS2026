@@ -1,4 +1,7 @@
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,3 +53,24 @@ def test_phase1_video_runner_is_offline_and_uses_geometry_flag() -> None:
     assert "test_sam_tp_sdk_shadow.py" in script
     assert ".send_control(" not in script
     assert ".start_mission(" not in script
+
+
+def test_video_review_cli_resolves_src_outside_repository(tmp_path: Path) -> None:
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "training/run_sam_tp_video_review.py"),
+            "--help",
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "--phase1-trajectories" in result.stdout
