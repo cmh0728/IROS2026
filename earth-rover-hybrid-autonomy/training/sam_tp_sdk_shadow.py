@@ -15,7 +15,10 @@ from earth_rover.planning.trajectory_sampler import (
     DEFAULT_CURVATURES,
     ConstantCurvatureTrajectorySampler,
 )
-from training.sam_tp_phase1_review import SamTpPhase1FrameProcessor
+from training.sam_tp_phase1_review import (
+    SamTpPhase1FrameProcessor,
+    draw_image_path_rgb,
+)
 from training.sam_tp_reproduction import SamTpPrediction, score_to_heatmap
 
 
@@ -155,6 +158,10 @@ def run_shadow_step(
         "candidate_trajectory_count": len(phase1.trajectories),
         "trajectory_geometry_only": True,
         "camera_projection_applied": False,
+        "image_path_valid": phase1.image_path.valid,
+        "image_path_reason": phase1.image_path.reason,
+        "image_path_mean_score": phase1.image_path.mean_score,
+        "image_path_visualization_only": True,
         "prediction_valid": not frame_stale,
         "telemetry_valid": not telemetry_stale,
         "shadow_state": shadow_state,
@@ -169,6 +176,7 @@ def run_shadow_step(
         record,
         telemetry,
         panel_width,
+        phase1.image_path,
     )
     return ShadowStep(dashboard, record), telemetry
 
@@ -196,6 +204,7 @@ def compose_shadow_dashboard(
     record: dict[str, object],
     telemetry: RoverData | None,
     panel_width: int,
+    image_path=None,
 ) -> np.ndarray:
     if panel_width <= 0:
         raise ValueError("panel_width must be positive")
@@ -208,6 +217,17 @@ def compose_shadow_dashboard(
         (panel_width, panel_height),
         interpolation=cv2.INTER_AREA,
     )
+    if image_path is not None:
+        path_rgb = draw_image_path_rgb(
+            cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB),
+            image_path,
+            0.018,
+        )
+        original = cv2.resize(
+            cv2.cvtColor(path_rgb, cv2.COLOR_RGB2BGR),
+            (panel_width, panel_height),
+            interpolation=cv2.INTER_AREA,
+        )
     heatmap_rgb = score_to_heatmap(score)
     heatmap_bgr = cv2.cvtColor(heatmap_rgb, cv2.COLOR_RGB2BGR)
     heatmap_bgr = cv2.resize(
@@ -232,7 +252,11 @@ def compose_shadow_dashboard(
         header_height : header_height + panel_height,
         panel_width * 2 :,
     ] = heatmap_bgr
-    titles = ("SDK FRONT (BGR)", "SAM-TP OVERLAY", "SCORE: BLUE LOW / RED HIGH")
+    titles = (
+        "SDK FRONT + IMAGE PATH",
+        "SAM-TP OVERLAY + PATH",
+        "SCORE: BLUE LOW / RED HIGH",
+    )
     for index, title in enumerate(titles):
         _text(canvas, title, index * panel_width + 12, 27, 0.55)
     state = str(record["shadow_state"])
@@ -268,7 +292,8 @@ def compose_shadow_dashboard(
             f"telemetry_age={record['telemetry_age_sec']}  "
             f"sdk_ts={record['sdk_frame_timestamp']}  "
             f"score min/mean/max={float(record['score_min']):.3f}/"
-            f"{float(record['score_mean']):.3f}/{float(record['score_max']):.3f}"
+            f"{float(record['score_mean']):.3f}/{float(record['score_max']):.3f}  "
+            f"path={record['image_path_reason']}"
         ),
         12,
         footer_y + 28,

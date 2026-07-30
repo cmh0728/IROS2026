@@ -14,6 +14,8 @@ REPORT_DIR="${REPORT_DIR:-$HOME/datasets/experiments/sam_tp_phase1/$RUN_ID}"
 DATASETS="${DATASETS:-0}"
 RIDES_PER_DATASET="${RIDES_PER_DATASET:-1}"
 SECONDS_PER_RIDE="${SECONDS_PER_RIDE:-20}"
+MINIMUM_PATH_SCORE="${MINIMUM_PATH_SCORE:-0.55}"
+PATH_CORRIDOR_HALF_WIDTH_RATIO="${PATH_CORRIDOR_HALF_WIDTH_RATIO:-0.018}"
 
 for path in "$PYTHON" "$UPSTREAM_ROOT" "$CONFIG" "$CHECKPOINT"; do
   if [[ ! -e "$path" ]]; then
@@ -60,8 +62,10 @@ echo "[3/3] Creating the deterministic QuickTime-compatible Phase 1 video"
   --datasets "${dataset_arguments[@]}" \
   --rides-per-dataset "$RIDES_PER_DATASET" \
   --seconds-per-ride "$SECONDS_PER_RIDE" \
-  --phase1-trajectories
+  --phase1-trajectories \
+  --minimum-path-score "$MINIMUM_PATH_SCORE" \
+  --path-corridor-half-width-ratio "$PATH_CORRIDOR_HALF_WIDTH_RATIO"
 
 echo "Phase 1 review: $OUTPUT_DIR"
-echo "Geometry is rover-frame only; camera projection and path scoring were not performed."
+echo "The image-space path is visualization-only; metric camera projection was not performed."
 echo "No SDK command or live rover motion was performed."

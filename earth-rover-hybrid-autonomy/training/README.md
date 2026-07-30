@@ -199,11 +199,13 @@ Only after this should we build the real PyTorch `Dataset`.
 ## SAM-TP Phase 1 Video Gate
 
 Run `scripts/run_sam_tp_phase1_video_review.sh` on Dell to create a
-QuickTime-compatible deterministic review video. The fourth panel shows the
-seven fixed candidates in the rover frame only. It is deliberately not drawn
-over the camera image because camera projection and calibration are not
-implemented yet.
+QuickTime-compatible deterministic review video. A display-only path starts
+near the bottom of the image and is drawn only when a connected corridor stays
+above the configured SAM-TP score threshold. The fourth panel separately shows
+the seven fixed rover-frame candidates. The image-space path is not a metric
+trajectory and must not be converted into steering before camera calibration.
 
 The read-only SDK shadow path applies the same SAM-TP output adapter to live
-front-camera frames and records the same candidate count. Neither path calls an
-SDK write endpoint or transmits a rover command.
+front-camera frames, generates the same image-space proposal, and records the
+same candidate count. Neither path calls an SDK write endpoint or transmits a
+rover command.

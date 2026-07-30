@@ -36,6 +36,7 @@ from training.sam_tp_reproduction import (
 )
 from training.sam_tp_phase1_review import (
     SamTpPhase1FrameProcessor,
+    draw_image_path_rgb,
     render_trajectory_geometry_rgb,
 )
 from training.traversability_video_review_v2 import (
@@ -94,6 +95,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--trajectory-sample-interval-m", type=float, default=0.1)
     parser.add_argument("--provisional-rover-width-m", type=float, default=0.4)
     parser.add_argument("--provisional-safety-margin-m", type=float, default=0.1)
+    parser.add_argument("--minimum-path-score", type=float, default=0.55)
+    parser.add_argument(
+        "--path-corridor-half-width-ratio",
+        type=float,
+        default=0.018,
+    )
     return parser.parse_args(argv)
 
 
@@ -146,6 +153,8 @@ def compose_sam_tp_panels(
     metadata: dict[str, object],
     panel_width: int,
     trajectories: tuple | None = None,
+    image_path=None,
+    corridor_half_width_ratio: float = 0.018,
 ) -> np.ndarray:
     if image_rgb.ndim != 3 or image_rgb.shape[2] != 3 or image_rgb.dtype != np.uint8:
         raise ValueError("image must be uint8 HxWx3 RGB")
@@ -155,14 +164,26 @@ def compose_sam_tp_panels(
         raise ValueError("score must remain in [0, 1]")
     heatmap = score_to_heatmap(score)
     overlay = cv2.addWeighted(image_rgb, 0.55, heatmap, 0.45, 0.0)
+    original_panel = image_rgb
+    if image_path is not None:
+        original_panel = draw_image_path_rgb(
+            image_rgb,
+            image_path,
+            corridor_half_width_ratio,
+        )
+        overlay = draw_image_path_rgb(
+            overlay,
+            image_path,
+            corridor_half_width_ratio,
+        )
     panel_height = max(2, round(panel_width * image_rgb.shape[0] / image_rgb.shape[1]))
     panel_height += panel_height % 2
     panel_images = [
-        fit_rgb(image_rgb, panel_width, panel_height),
+        fit_rgb(original_panel, panel_width, panel_height),
         fit_rgb(overlay, panel_width, panel_height),
         fit_rgb(heatmap, panel_width, panel_height),
     ]
-    titles = ["ORIGINAL", "SAM-TP OVERLAY", "TRAVERSABILITY SCORE"]
+    titles = ["IMAGE-SPACE PATH", "SAM-TP OVERLAY + PATH", "TRAVERSABILITY SCORE"]
     if trajectories is not None:
         panel_images.append(
             render_trajectory_geometry_rgb(trajectories, panel_width, panel_height)
@@ -185,6 +206,11 @@ def compose_sam_tp_panels(
         f"{float(metadata['latency_ms']):.1f}ms measured_fps="
         f"{float(metadata['measured_fps']):.2f} red=high blue=low"
     )
+    if image_path is not None:
+        line2 += (
+            f" path={'VALID' if image_path.valid else 'NONE'} "
+            f"reason={image_path.reason}"
+        )
     cv2.putText(canvas, line1, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.53, (235, 235, 235), 1, cv2.LINE_AA)
     cv2.putText(canvas, line2, (10, 49), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (210, 210, 210), 1, cv2.LINE_AA)
     for index, title in enumerate(titles):
@@ -281,6 +307,12 @@ def process_dataset(
                         },
                         panel_width,
                         phase1.trajectories if phase1 is not None else None,
+                        phase1.image_path if phase1 is not None else None,
+                        (
+                            phase1_processor.corridor_half_width_ratio
+                            if phase1_processor is not None
+                            else 0.018
+                        ),
                     )
                     if writer is None:
                         writer = writer_factory(
@@ -299,6 +331,21 @@ def process_dataset(
                                 "score_min": float(prediction.traversability_score.min()),
                                 "score_max": float(prediction.traversability_score.max()),
                                 "score_mean": float(prediction.traversability_score.mean()),
+                                "image_path_valid": (
+                                    phase1.image_path.valid
+                                    if phase1 is not None
+                                    else None
+                                ),
+                                "image_path_reason": (
+                                    phase1.image_path.reason
+                                    if phase1 is not None
+                                    else None
+                                ),
+                                "image_path_mean_score": (
+                                    phase1.image_path.mean_score
+                                    if phase1 is not None
+                                    else None
+                                ),
                             },
                             sort_keys=True,
                         )
@@ -348,6 +395,7 @@ def process_dataset(
         "sdk_or_live_rover_commands_sent": False,
         "phase1_trajectory_geometry": phase1_processor is not None,
         "camera_projection_applied": False,
+        "image_path_visualization_only": phase1_processor is not None,
     }
 
 
@@ -426,6 +474,8 @@ def main(argv: list[str] | None = None) -> int:
             predictor,
             sampler.sample(),
             checkpoint_sha256[:12],
+            minimum_path_score=args.minimum_path_score,
+            corridor_half_width_ratio=args.path_corridor_half_width_ratio,
         )
     temporary = output.parent / f".{output.name}.tmp-{os.getpid()}"
     temporary.mkdir(parents=True)
