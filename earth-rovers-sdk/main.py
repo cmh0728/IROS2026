@@ -10,7 +10,7 @@ import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Literal
@@ -93,6 +93,22 @@ checkpoints_list_data = {}
 app.mount("/static", StaticFiles(directory="./static"), name="static")
 
 browser_service = BrowserService()
+
+
+def mission_status_payload():
+    checkpoints = checkpoints_list_data.get("checkpoints_list", [])
+    if not isinstance(checkpoints, list):
+        checkpoints = []
+    return {
+        "mission_configured": bool(os.getenv("MISSION_SLUG")),
+        "mission_active": bool(auth_response_data),
+        "checkpoint_count": len(checkpoints),
+        "latest_scanned_checkpoint": checkpoints_list_data.get(
+            "latest_scanned_checkpoint"
+        ),
+        "checkpoints_loaded": bool(checkpoints_list_data),
+        "timestamp": datetime.utcnow().timestamp(),
+    }
 
 
 async def auth_common():
@@ -301,6 +317,13 @@ async def start_mission():
     )
 
 
+@app.get("/mission-status")
+async def mission_status():
+    """Return non-sensitive local mission state without starting a mission."""
+
+    return JSONResponse(content=mission_status_payload())
+
+
 @app.post("/end-mission")
 async def end_mission():
     required_env_vars = ["SDK_API_TOKEN", "BOT_SLUG", "MISSION_SLUG"]
@@ -366,6 +389,13 @@ async def render_index_html(is_spectator: bool):
 @app.get("/")
 async def get_index(request: Request):
     return await render_index_html(is_spectator=True)
+
+
+@app.get("/dashboard")
+async def mission_dashboard():
+    """Serve mission controls without requiring an active mission."""
+
+    return FileResponse("static/mission_dashboard.html")
 
 
 @app.get("/sdk")

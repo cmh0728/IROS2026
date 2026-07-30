@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Earth Rover Mission Dashboard</title>
+    <link rel="stylesheet" href="/static/mission_dashboard.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Earth Rover Mission Dashboard</h1>
+        <p>Camera, telemetry, mission state, and API responses</p>
+      </div>
+      <div id="connection-state" class="status status-offline">SDK unavailable</div>
+    </header>
+
+    <main>
+      <section class="mission-strip" aria-label="Mission controls">
+        <div class="mission-state">
+          <span class="label">Mission</span>
+          <strong id="mission-state">Checking</strong>
+          <span id="mission-detail">Waiting for SDK response</span>
+        </div>
+        <div class="actions">
+          <button id="start-mission" class="primary" type="button">Start Mission</button>
+          <button id="refresh-mission" type="button">Refresh Mission</button>
+          <button id="end-mission" class="danger" type="button">End Mission</button>
+          <a class="button-link" href="/sdk" target="_blank" rel="noopener">Open RTC Stream</a>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <div class="camera-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Front Camera</h2>
+              <span id="camera-meta">Mission must be active</span>
+            </div>
+            <div id="camera-state" class="status status-idle">Idle</div>
+          </div>
+          <div class="camera-stage">
+            <img id="front-camera" alt="Earth Rover front camera" />
+            <div id="camera-placeholder">Start a mission to load the front camera.</div>
+          </div>
+        </div>
+
+        <aside class="side-panel">
+          <section>
+            <div class="panel-header">
+              <h2>Telemetry</h2>
+              <span id="telemetry-time">No data</span>
+            </div>
+            <dl class="telemetry-grid">
+              <div><dt>Latitude</dt><dd id="latitude">-</dd></div>
+              <div><dt>Longitude</dt><dd id="longitude">-</dd></div>
+              <div><dt>Heading</dt><dd id="orientation">-</dd></div>
+              <div><dt>Speed</dt><dd id="speed">-</dd></div>
+              <div><dt>Battery</dt><dd id="battery">-</dd></div>
+              <div><dt>Signal</dt><dd id="signal">-</dd></div>
+              <div><dt>GPS signal</dt><dd id="gps-signal">-</dd></div>
+              <div><dt>RPM</dt><dd id="rpms">-</dd></div>
+            </dl>
+          </section>
+
+          <section>
+            <div class="panel-header">
+              <h2>Checkpoints</h2>
+              <span id="checkpoint-summary">No mission</span>
+            </div>
+            <ol id="checkpoint-list" class="checkpoint-list">
+              <li>No checkpoint data.</li>
+            </ol>
+          </section>
+        </aside>
+      </section>
+
+      <section class="response-panel">
+        <div class="panel-header">
+          <h2>Mission API Results</h2>
+          <button id="clear-log" class="small" type="button">Clear</button>
+        </div>
+        <div id="response-log" class="response-log" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <script src="/static/mission_dashboard.js"></script>
+  </body>
+</html>

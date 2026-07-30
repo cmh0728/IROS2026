@@ -560,3 +560,15 @@ Example Response:
 
 - [Frodobots Discord](https://discord.com/invite/AUegJCJwyb)
 
+## Mission dashboard
+
+Start the SDK service and open `http://localhost:8000/dashboard` to monitor the
+front camera, telemetry, checkpoints, mission state, and API responses in one
+screen. The dashboard can be opened before a mission starts.
+
+- `Start Mission` calls `POST /start-mission`.
+- `Refresh Mission` reads `GET /mission-status` and `GET /checkpoints-list`.
+- `End Mission` requires browser confirmation and calls `POST /end-mission`.
+- The dashboard does not call `/control` or send movement commands.
+
+The existing RTC page remains available at `/sdk` after a mission starts.
