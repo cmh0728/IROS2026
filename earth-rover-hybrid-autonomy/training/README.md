@@ -195,3 +195,15 @@ After the probe, inspect:
 - whether image paths are available directly or require video extraction
 
 Only after this should we build the real PyTorch `Dataset`.
+
+## SAM-TP Phase 1 Video Gate
+
+Run `scripts/run_sam_tp_phase1_video_review.sh` on Dell to create a
+QuickTime-compatible deterministic review video. The fourth panel shows the
+seven fixed candidates in the rover frame only. It is deliberately not drawn
+over the camera image because camera projection and calibration are not
+implemented yet.
+
+The read-only SDK shadow path applies the same SAM-TP output adapter to live
+front-camera frames and records the same candidate count. Neither path calls an
+SDK write endpoint or transmits a rover command.

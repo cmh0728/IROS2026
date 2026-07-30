@@ -402,6 +402,92 @@ def test_mock_video_processing_records_frames_latency_and_no_control(
     assert "progress=1/1 processed=1 failed=0" in output
 
 
+def test_phase1_video_processing_adds_geometry_without_camera_projection(
+    tmp_path: Path,
+) -> None:
+    frame = ReviewFrame(
+        dataset="output_rides_0",
+        ride_id="7",
+        frame_id=10,
+        timestamp=1000.5,
+        playlist_reference="ride/recordings/front.m3u8",
+        segment_reference="ride/recordings/front.ts",
+        timeline_section_id=0,
+    )
+    segment = ReviewSegment(
+        dataset=frame.dataset,
+        ride_id=frame.ride_id,
+        start_timestamp=frame.timestamp,
+        end_timestamp=frame.timestamp + 0.1,
+        requested_duration_seconds=0.1,
+        frames=(frame,),
+    )
+
+    class Decoder:
+        def decode(self, _: ReviewFrame) -> np.ndarray:
+            return np.full((36, 64, 3), 100, dtype=np.uint8)
+
+    class Predictor:
+        def predict(self, image: np.ndarray) -> SamTpPrediction:
+            score = np.full(image.shape[:2], 0.5, dtype=np.float32)
+            return SamTpPrediction(
+                raw_logits=np.zeros_like(score),
+                traversability_score=score,
+                heatmap=np.zeros_like(image),
+                input_shape=image.shape,
+                output_shape=score.shape,
+                inference_time_ms=3.0,
+                device="test",
+            )
+
+    class Writer:
+        def __init__(self, path: Path, fps: float, frame_size: tuple[int, int]) -> None:
+            assert frame_size[0] == 640
+            self.frames = 0
+
+        def write(self, _: np.ndarray) -> None:
+            self.frames += 1
+
+        def close(self) -> dict[str, object]:
+            return {"codec": "mock", "frame_count": self.frames}
+
+    from earth_rover.planning.trajectory_sampler import (
+        DEFAULT_CURVATURES,
+        ConstantCurvatureTrajectorySampler,
+    )
+    from training.sam_tp_phase1_review import SamTpPhase1FrameProcessor
+
+    predictor = Predictor()
+    trajectories = ConstantCurvatureTrajectorySampler(
+        DEFAULT_CURVATURES,
+        2.0,
+        0.1,
+        0.4,
+        0.1,
+    ).sample()
+    report = process_dataset(
+        tmp_path / "dataset",
+        [segment],
+        [],
+        Decoder(),
+        predictor,
+        tmp_path / "output",
+        10.0,
+        160,
+        "abc",
+        phase1_processor=SamTpPhase1FrameProcessor(
+            predictor,
+            trajectories,
+            "abc",
+        ),
+        writer_factory=Writer,
+    )
+
+    assert report["success"]
+    assert report["phase1_trajectory_geometry"] is True
+    assert report["camera_projection_applied"] is False
+
+
 def test_manifest_serialization_is_stable(tmp_path: Path) -> None:
     path = tmp_path / "manifest.json"
     write_json(path, {"z": 1, "a": [2, 3]})

@@ -38,3 +38,15 @@ def test_trajectory_primitive_runner_is_checkpoint_free_and_read_only() -> None:
     assert "no CUDA or rover command" in script
     assert "checkpoint_2.pt" not in script
     assert ".send_control(" not in script
+
+
+def test_phase1_video_runner_is_offline_and_uses_geometry_flag() -> None:
+    script = (ROOT / "scripts/run_sam_tp_phase1_video_review.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "--phase1-trajectories" in script
+    assert "run_sam_tp_video_review.py" in script
+    assert "test_sam_tp_sdk_shadow.py" in script
+    assert ".send_control(" not in script
+    assert ".start_mission(" not in script

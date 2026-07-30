@@ -11,6 +11,11 @@ import cv2
 import numpy as np
 
 from earth_rover.core.types import FrameData, RoverData
+from earth_rover.planning.trajectory_sampler import (
+    DEFAULT_CURVATURES,
+    ConstantCurvatureTrajectorySampler,
+)
+from training.sam_tp_phase1_review import SamTpPhase1FrameProcessor
 from training.sam_tp_reproduction import SamTpPrediction, score_to_heatmap
 
 
@@ -22,6 +27,15 @@ class ReadOnlySdkSource(Protocol):
 
 class Predictor(Protocol):
     def predict(self, image_rgb: np.ndarray) -> SamTpPrediction: ...
+
+
+_PROVISIONAL_PHASE1_TRAJECTORIES = ConstantCurvatureTrajectorySampler(
+    DEFAULT_CURVATURES,
+    horizon_m=2.0,
+    sample_interval_m=0.1,
+    rover_width_m=0.4,
+    safety_margin_m=0.1,
+).sample()
 
 
 @dataclass(frozen=True)
@@ -43,6 +57,7 @@ def run_shadow_step(
     clock: Callable[[], float] = time.time,
     monotonic: Callable[[], float] = time.monotonic,
     panel_width: int = 480,
+    phase1_processor: SamTpPhase1FrameProcessor | None = None,
 ) -> tuple[ShadowStep, RoverData | None]:
     """Fetch one live frame, infer once, and return a read-only dashboard step.
 
@@ -64,7 +79,14 @@ def run_shadow_step(
 
     image_bgr = np.asarray(frame.image)
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-    prediction = predictor.predict(image_rgb)
+    processor = phase1_processor or SamTpPhase1FrameProcessor(
+        predictor,
+        _PROVISIONAL_PHASE1_TRAJECTORIES,
+        checkpoint_sha256[:12],
+    )
+    phase1 = processor.process(image_rgb, float(frame.timestamp))
+    prediction = phase1.prediction
+    traversability = phase1.traversability
     finished = clock()
     finished_monotonic = monotonic()
     acquisition_latency_sec = frame_received_monotonic - request_started_monotonic
@@ -129,6 +151,10 @@ def run_shadow_step(
         "score_max": float(prediction.traversability_score.max()),
         "score_mean": float(prediction.traversability_score.mean()),
         "score_std": float(prediction.traversability_score.std()),
+        "adapter_confidence": traversability.confidence,
+        "candidate_trajectory_count": len(phase1.trajectories),
+        "trajectory_geometry_only": True,
+        "camera_projection_applied": False,
         "prediction_valid": not frame_stale,
         "telemetry_valid": not telemetry_stale,
         "shadow_state": shadow_state,

@@ -33,11 +33,19 @@ from training.sam_tp_reproduction import (
     sha256_file,
     write_json,
 )
+from training.sam_tp_phase1_review import (
+    SamTpPhase1FrameProcessor,
+    render_trajectory_geometry_rgb,
+)
 from training.traversability_video_review_v2 import (
     H264VideoWriter,
     ReviewFrame,
     ReviewSegment,
     select_review_segments,
+)
+from earth_rover.planning.trajectory_sampler import (
+    DEFAULT_CURVATURES,
+    ConstantCurvatureTrajectorySampler,
 )
 
 
@@ -80,6 +88,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--maximum-frame-gap-seconds", type=float)
     parser.add_argument("--panel-width", type=int)
     parser.add_argument("--seed", type=int)
+    parser.add_argument("--phase1-trajectories", action="store_true")
+    parser.add_argument("--trajectory-horizon-m", type=float, default=2.0)
+    parser.add_argument("--trajectory-sample-interval-m", type=float, default=0.1)
+    parser.add_argument("--provisional-rover-width-m", type=float, default=0.4)
+    parser.add_argument("--provisional-safety-margin-m", type=float, default=0.1)
     return parser.parse_args(argv)
 
 
@@ -131,6 +144,7 @@ def compose_sam_tp_panels(
     score: np.ndarray,
     metadata: dict[str, object],
     panel_width: int,
+    trajectories: tuple | None = None,
 ) -> np.ndarray:
     if image_rgb.ndim != 3 or image_rgb.shape[2] != 3 or image_rgb.dtype != np.uint8:
         raise ValueError("image must be uint8 HxWx3 RGB")
@@ -142,17 +156,24 @@ def compose_sam_tp_panels(
     overlay = cv2.addWeighted(image_rgb, 0.55, heatmap, 0.45, 0.0)
     panel_height = max(2, round(panel_width * image_rgb.shape[0] / image_rgb.shape[1]))
     panel_height += panel_height % 2
-    panels = np.concatenate(
-        (
-            fit_rgb(image_rgb, panel_width, panel_height),
-            fit_rgb(overlay, panel_width, panel_height),
-            fit_rgb(heatmap, panel_width, panel_height),
-        ),
-        axis=1,
-    )
+    panel_images = [
+        fit_rgb(image_rgb, panel_width, panel_height),
+        fit_rgb(overlay, panel_width, panel_height),
+        fit_rgb(heatmap, panel_width, panel_height),
+    ]
+    titles = ["ORIGINAL", "SAM-TP OVERLAY", "TRAVERSABILITY SCORE"]
+    if trajectories is not None:
+        panel_images.append(
+            render_trajectory_geometry_rgb(trajectories, panel_width, panel_height)
+        )
+        titles.append("CANDIDATE TRAJECTORIES (ROVER FRAME)")
+    panels = np.concatenate(panel_images, axis=1)
     body = cv2.cvtColor(panels, cv2.COLOR_RGB2BGR)
     header = 82
-    canvas = np.zeros((header + panel_height, panel_width * 3, 3), dtype=np.uint8)
+    canvas = np.zeros(
+        (header + panel_height, panel_width * len(panel_images), 3),
+        dtype=np.uint8,
+    )
     canvas[header:] = body
     line1 = (
         f"{metadata['dataset']} ride={metadata['ride_id']} frame={metadata['frame_id']} "
@@ -165,7 +186,7 @@ def compose_sam_tp_panels(
     )
     cv2.putText(canvas, line1, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.53, (235, 235, 235), 1, cv2.LINE_AA)
     cv2.putText(canvas, line2, (10, 49), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (210, 210, 210), 1, cv2.LINE_AA)
-    for index, title in enumerate(("ORIGINAL", "SAM-TP OVERLAY", "TRAVERSABILITY SCORE")):
+    for index, title in enumerate(titles):
         cv2.putText(
             canvas,
             title,
@@ -189,6 +210,7 @@ def process_dataset(
     output_fps: float,
     panel_width: int,
     checkpoint_sha256: str,
+    phase1_processor: SamTpPhase1FrameProcessor | None = None,
     writer_factory=H264VideoWriter,
     reported_output_dir: Path | None = None,
 ) -> dict[str, object]:
@@ -212,7 +234,16 @@ def process_dataset(
                 for frame in segment.frames:
                     try:
                         image = decoder.decode(frame)
-                        prediction = predictor.predict(image)
+                        phase1 = (
+                            phase1_processor.process(image, frame.timestamp)
+                            if phase1_processor is not None
+                            else None
+                        )
+                        prediction = (
+                            phase1.prediction
+                            if phase1 is not None
+                            else predictor.predict(image)
+                        )
                     except Exception as exc:
                         failures.append(
                             {
@@ -248,6 +279,7 @@ def process_dataset(
                             "measured_fps": measured_fps,
                         },
                         panel_width,
+                        phase1.trajectories if phase1 is not None else None,
                     )
                     if writer is None:
                         writer = writer_factory(
@@ -313,6 +345,8 @@ def process_dataset(
         "score_semantics": "red=high traversability, blue=low traversability",
         "temporal_smoothing_applied": False,
         "sdk_or_live_rover_commands_sent": False,
+        "phase1_trajectory_geometry": phase1_processor is not None,
+        "camera_projection_applied": False,
     }
 
 
@@ -378,6 +412,20 @@ def main(argv: list[str] | None = None) -> int:
         paths["checkpoint"],
         synchronize=torch.cuda.synchronize,
     )
+    phase1_processor = None
+    if args.phase1_trajectories:
+        sampler = ConstantCurvatureTrajectorySampler(
+            DEFAULT_CURVATURES,
+            args.trajectory_horizon_m,
+            args.trajectory_sample_interval_m,
+            args.provisional_rover_width_m,
+            args.provisional_safety_margin_m,
+        )
+        phase1_processor = SamTpPhase1FrameProcessor(
+            predictor,
+            sampler.sample(),
+            checkpoint_sha256[:12],
+        )
     temporary = output.parent / f".{output.name}.tmp-{os.getpid()}"
     temporary.mkdir(parents=True)
     reports: dict[str, dict[str, object]] = {}
@@ -410,6 +458,7 @@ def main(argv: list[str] | None = None) -> int:
                 values["output_fps"],
                 values["panel_width"],
                 checkpoint_sha256,
+                phase1_processor=phase1_processor,
                 reported_output_dir=output / root.name,
             )
             report["discovery"] = discovery

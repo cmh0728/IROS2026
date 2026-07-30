@@ -85,6 +85,10 @@ def test_shadow_step_uses_read_only_sdk_and_explicit_bgr_to_rgb() -> None:
     assert predictor.images[0][0, 0].tolist() == [30, 20, 10]
     assert telemetry is not None
     assert step.record["command_transmitted"] is False
+    assert step.record["candidate_trajectory_count"] == 7
+    assert step.record["adapter_confidence"] == 1.0
+    assert step.record["trajectory_geometry_only"] is True
+    assert step.record["camera_projection_applied"] is False
     assert step.record["sdk_allowed_read_endpoints"] == [
         "/v2/front",
         "/front",

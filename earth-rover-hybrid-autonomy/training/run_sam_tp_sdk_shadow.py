@@ -17,6 +17,10 @@ for import_root in (ROOT, ROOT / "src"):
         sys.path.insert(0, str(import_root))
 
 from earth_rover.sdk_client import EarthRoverSDKClient  # noqa: E402
+from earth_rover.planning.trajectory_sampler import (  # noqa: E402
+    DEFAULT_CURVATURES,
+    ConstantCurvatureTrajectorySampler,
+)
 from earth_rover.utils.config import load_config  # noqa: E402
 from training.sam_tp_reproduction import (  # noqa: E402
     OFFICIAL_COMMIT,
@@ -28,6 +32,7 @@ from training.sam_tp_sdk_shadow import (  # noqa: E402
     run_shadow_step,
     write_shadow_summary,
 )
+from training.sam_tp_phase1_review import SamTpPhase1FrameProcessor  # noqa: E402
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -113,6 +118,17 @@ def main(argv: list[str] | None = None) -> int:
         checkpoint,
         synchronize=torch.cuda.synchronize,
     )
+    phase1_processor = SamTpPhase1FrameProcessor(
+        predictor,
+        ConstantCurvatureTrajectorySampler(
+            DEFAULT_CURVATURES,
+            horizon_m=2.0,
+            sample_interval_m=0.1,
+            rover_width_m=0.4,
+            safety_margin_m=0.1,
+        ).sample(),
+        checkpoint_sha[:12],
+    )
 
     output.mkdir(parents=True)
     jsonl_path = output / "shadow_frames.jsonl"
@@ -146,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
                         args.maximum_frame_age_sec,
                         args.maximum_telemetry_age_sec,
                         panel_width=args.panel_width,
+                        phase1_processor=phase1_processor,
                     )
                     if fetch_telemetry:
                         next_telemetry = loop_started + telemetry_interval
