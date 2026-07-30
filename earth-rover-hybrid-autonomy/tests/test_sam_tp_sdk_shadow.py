@@ -62,7 +62,9 @@ class RecordingPredictor:
 def test_shadow_step_uses_read_only_sdk_and_explicit_bgr_to_rgb() -> None:
     sdk = ReadOnlyFakeSdk()
     predictor = RecordingPredictor()
-    clock_values = iter((100.0, 100.01, 100.1))
+    # Wall-clock correction must not affect measured durations.
+    clock_values = iter((100.0, 90.0, 100.1))
+    monotonic_values = iter((10.01, 10.03, 10.2))
 
     step, telemetry = run_shadow_step(
         sdk,
@@ -73,8 +75,9 @@ def test_shadow_step_uses_read_only_sdk_and_explicit_bgr_to_rgb() -> None:
         started_monotonic=10.0,
         checkpoint_sha256="abc",
         maximum_frame_age_sec=1.0,
+        maximum_telemetry_age_sec=1.0,
         clock=lambda: next(clock_values),
-        monotonic=lambda: 10.2,
+        monotonic=lambda: next(monotonic_values),
         panel_width=100,
     )
 
@@ -82,8 +85,15 @@ def test_shadow_step_uses_read_only_sdk_and_explicit_bgr_to_rgb() -> None:
     assert predictor.images[0][0, 0].tolist() == [30, 20, 10]
     assert telemetry is not None
     assert step.record["command_transmitted"] is False
-    assert step.record["sdk_read_endpoints"] == ["/v2/front", "/front", "/data"]
+    assert step.record["sdk_allowed_read_endpoints"] == [
+        "/v2/front",
+        "/front",
+        "/data",
+    ]
+    assert abs(float(step.record["acquisition_latency_ms"]) - 20.0) < 1e-9
+    assert abs(float(step.record["end_to_end_latency_ms"]) - 190.0) < 1e-9
     assert step.record["shadow_state"] == "CLEAR"
+    assert step.record["telemetry_valid"] is True
     assert step.dashboard_bgr.shape == (242, 300, 3)
 
 
@@ -91,6 +101,7 @@ def test_shadow_step_marks_old_frame_stale_without_command() -> None:
     sdk = ReadOnlyFakeSdk()
     predictor = RecordingPredictor()
     clock_values = iter((100.0, 100.01, 101.2))
+    monotonic_values = iter((10.01, 10.03, 10.2))
 
     step, _ = run_shadow_step(
         sdk,
@@ -101,14 +112,50 @@ def test_shadow_step_marks_old_frame_stale_without_command() -> None:
         started_monotonic=10.0,
         checkpoint_sha256="abc",
         maximum_frame_age_sec=1.0,
+        maximum_telemetry_age_sec=1.0,
         clock=lambda: next(clock_values),
-        monotonic=lambda: 10.2,
+        monotonic=lambda: next(monotonic_values),
         panel_width=100,
     )
 
     assert sdk.calls == ["get_front_frame"]
     assert step.record["prediction_valid"] is False
     assert step.record["shadow_state"] == "STALE_FRAME"
+    assert step.record["command_transmitted"] is False
+
+
+def test_shadow_step_reports_stale_telemetry_separately() -> None:
+    sdk = ReadOnlyFakeSdk()
+    predictor = RecordingPredictor()
+    telemetry = sdk.get_data()
+    telemetry = RoverData(
+        **{
+            **telemetry.__dict__,
+            "timestamp": 98.0,
+        }
+    )
+    sdk.calls.clear()
+    clock_values = iter((100.0, 100.01, 100.1))
+    monotonic_values = iter((10.01, 10.03, 10.2))
+
+    step, _ = run_shadow_step(
+        sdk,
+        predictor,
+        frame_index=0,
+        telemetry=telemetry,
+        fetch_telemetry=False,
+        started_monotonic=10.0,
+        checkpoint_sha256="abc",
+        maximum_frame_age_sec=1.0,
+        maximum_telemetry_age_sec=1.0,
+        clock=lambda: next(clock_values),
+        monotonic=lambda: next(monotonic_values),
+        panel_width=100,
+    )
+
+    assert step.record["prediction_valid"] is True
+    assert step.record["telemetry_valid"] is False
+    assert step.record["shadow_state"] == "STALE_TELEMETRY"
     assert step.record["command_transmitted"] is False
 
 
@@ -119,6 +166,8 @@ def test_shadow_summary_records_no_sdk_write_or_motion(tmp_path: Path) -> None:
             "end_to_end_latency_ms": 100.0,
             "inference_latency_ms": 80.0,
             "effective_fps": 8.0,
+            "prediction_valid": True,
+            "telemetry_valid": True,
         }
     ]
 
@@ -128,8 +177,31 @@ def test_shadow_summary_records_no_sdk_write_or_motion(tmp_path: Path) -> None:
     assert report["success"]
     assert report["sdk_write_endpoints"] == []
     assert report["command_transmitted"] is False
-    assert report["live_motion_performed"] is False
+    assert report["live_motion_command_sent_by_process"] is False
     assert report["processed_frame_count"] == 1
+
+
+def test_shadow_step_rejects_non_uint8_sdk_frame() -> None:
+    sdk = ReadOnlyFakeSdk()
+    sdk.image = np.zeros((12, 20, 3), dtype=np.float32)
+
+    try:
+        run_shadow_step(
+            sdk,
+            RecordingPredictor(),
+            frame_index=0,
+            telemetry=None,
+            fetch_telemetry=False,
+            started_monotonic=10.0,
+            checkpoint_sha256="abc",
+            maximum_frame_age_sec=1.0,
+            maximum_telemetry_age_sec=1.0,
+            panel_width=100,
+        )
+    except ValueError as exc:
+        assert str(exc) == "SDK front frame must use uint8 pixels"
+    else:
+        raise AssertionError("non-uint8 SDK frame must be rejected")
 
 
 def test_shadow_launcher_contains_no_sdk_write_call() -> None:

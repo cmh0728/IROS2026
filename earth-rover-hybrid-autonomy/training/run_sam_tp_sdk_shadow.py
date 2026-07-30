@@ -46,6 +46,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--target-fps", type=float, default=8.0)
     parser.add_argument("--telemetry-hz", type=float, default=2.0)
     parser.add_argument("--maximum-frame-age-sec", type=float, default=1.0)
+    parser.add_argument("--maximum-telemetry-age-sec", type=float, default=1.0)
     parser.add_argument("--request-timeout-sec", type=float, default=2.0)
     parser.add_argument("--panel-width", type=int, default=480)
     parser.add_argument("--max-frames", type=int)
@@ -59,7 +60,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if args.target_fps <= 0.0 or args.telemetry_hz <= 0.0:
         raise SystemExit("target-fps and telemetry-hz must be positive")
-    if args.maximum_frame_age_sec <= 0.0 or args.request_timeout_sec <= 0.0:
+    if (
+        args.maximum_frame_age_sec <= 0.0
+        or args.maximum_telemetry_age_sec <= 0.0
+        or args.request_timeout_sec <= 0.0
+    ):
         raise SystemExit("timeouts must be positive")
     if args.panel_width <= 0 or args.snapshot_interval <= 0:
         raise SystemExit("panel-width and snapshot-interval must be positive")
@@ -139,6 +144,7 @@ def main(argv: list[str] | None = None) -> int:
                         started,
                         checkpoint_sha,
                         args.maximum_frame_age_sec,
+                        args.maximum_telemetry_age_sec,
                         panel_width=args.panel_width,
                     )
                     if fetch_telemetry:
@@ -151,7 +157,9 @@ def main(argv: list[str] | None = None) -> int:
                         frame_index % args.snapshot_interval == 0
                         or args.max_frames == frame_index + 1
                     ):
-                        cv2.imwrite(str(output / "latest_dashboard.jpg"), step.dashboard_bgr)
+                        snapshot = output / "latest_dashboard.jpg"
+                        if not cv2.imwrite(str(snapshot), step.dashboard_bgr):
+                            raise OSError(f"cannot write dashboard snapshot: {snapshot}")
                     print(
                         f"frame={frame_index} state={step.record['shadow_state']} "
                         f"e2e={float(step.record['end_to_end_latency_ms']):.1f}ms "

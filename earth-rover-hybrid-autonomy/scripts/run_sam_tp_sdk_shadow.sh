@@ -15,6 +15,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-$HOME/datasets/review_bundles/sam_tp_sdk_shadow/$RUN_I
 TARGET_FPS="${TARGET_FPS:-8}"
 TELEMETRY_HZ="${TELEMETRY_HZ:-2}"
 MAXIMUM_FRAME_AGE_SEC="${MAXIMUM_FRAME_AGE_SEC:-1.0}"
+MAXIMUM_TELEMETRY_AGE_SEC="${MAXIMUM_TELEMETRY_AGE_SEC:-1.0}"
 REQUEST_TIMEOUT_SEC="${REQUEST_TIMEOUT_SEC:-2.0}"
 MAX_FRAMES="${MAX_FRAMES:-}"
 MAXIMUM_CONSECUTIVE_FAILURES="${MAXIMUM_CONSECUTIVE_FAILURES:-5}"
@@ -54,6 +55,7 @@ arguments=(
   --target-fps "$TARGET_FPS"
   --telemetry-hz "$TELEMETRY_HZ"
   --maximum-frame-age-sec "$MAXIMUM_FRAME_AGE_SEC"
+  --maximum-telemetry-age-sec "$MAXIMUM_TELEMETRY_AGE_SEC"
   --request-timeout-sec "$REQUEST_TIMEOUT_SEC"
   --maximum-consecutive-failures "$MAXIMUM_CONSECUTIVE_FAILURES"
 )

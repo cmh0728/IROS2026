@@ -39,6 +39,7 @@ def run_shadow_step(
     started_monotonic: float,
     checkpoint_sha256: str,
     maximum_frame_age_sec: float,
+    maximum_telemetry_age_sec: float,
     clock: Callable[[], float] = time.time,
     monotonic: Callable[[], float] = time.monotonic,
     panel_width: int = 480,
@@ -50,17 +51,28 @@ def run_shadow_step(
     """
 
     request_started = clock()
+    request_started_monotonic = monotonic()
     frame = sdk.get_front_frame()
     frame_received = clock()
+    frame_received_monotonic = monotonic()
     if fetch_telemetry:
         telemetry = sdk.get_data()
     if frame.image.ndim != 3 or frame.image.shape[2] != 3:
         raise ValueError("SDK front frame must be an HxWx3 BGR image")
+    if frame.image.dtype != np.uint8:
+        raise ValueError("SDK front frame must use uint8 pixels")
 
-    image_bgr = np.asarray(frame.image, dtype=np.uint8)
+    image_bgr = np.asarray(frame.image)
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
     prediction = predictor.predict(image_rgb)
     finished = clock()
+    finished_monotonic = monotonic()
+    acquisition_latency_sec = frame_received_monotonic - request_started_monotonic
+    end_to_end_latency_sec = finished_monotonic - request_started_monotonic
+    if acquisition_latency_sec < 0.0 or not math.isfinite(acquisition_latency_sec):
+        raise ValueError("acquisition latency is invalid")
+    if end_to_end_latency_sec < 0.0 or not math.isfinite(end_to_end_latency_sec):
+        raise ValueError("end-to-end latency is invalid")
     local_frame_age_sec = finished - float(frame.timestamp)
     if not math.isfinite(local_frame_age_sec):
         raise ValueError("local frame age is not finite")
@@ -71,7 +83,7 @@ def run_shadow_step(
     )
     if sdk_frame_age_sec is not None and not math.isfinite(sdk_frame_age_sec):
         raise ValueError("SDK frame age is not finite")
-    stale = (
+    frame_stale = (
         local_frame_age_sec < 0.0
         or local_frame_age_sec > maximum_frame_age_sec
         or (
@@ -82,7 +94,23 @@ def run_shadow_step(
             )
         )
     )
-    elapsed = monotonic() - started_monotonic
+    telemetry_age_sec = (
+        finished - float(telemetry.timestamp) if telemetry is not None else None
+    )
+    if telemetry_age_sec is not None and not math.isfinite(telemetry_age_sec):
+        raise ValueError("telemetry age is not finite")
+    telemetry_stale = (
+        telemetry_age_sec is None
+        or telemetry_age_sec < 0.0
+        or telemetry_age_sec > maximum_telemetry_age_sec
+    )
+    if frame_stale:
+        shadow_state = "STALE_FRAME"
+    elif telemetry_stale:
+        shadow_state = "STALE_TELEMETRY"
+    else:
+        shadow_state = "CLEAR"
+    elapsed = finished_monotonic - started_monotonic
     effective_fps = (frame_index + 1) / elapsed if elapsed > 0.0 else 0.0
     record = {
         "frame_index": frame_index,
@@ -92,19 +120,21 @@ def run_shadow_step(
         "sdk_frame_timestamp": frame.sdk_timestamp,
         "local_frame_age_sec": local_frame_age_sec,
         "sdk_frame_age_sec": sdk_frame_age_sec,
-        "acquisition_latency_ms": (frame_received - request_started) * 1000.0,
+        "telemetry_age_sec": telemetry_age_sec,
+        "acquisition_latency_ms": acquisition_latency_sec * 1000.0,
         "inference_latency_ms": prediction.inference_time_ms,
-        "end_to_end_latency_ms": (finished - request_started) * 1000.0,
+        "end_to_end_latency_ms": end_to_end_latency_sec * 1000.0,
         "effective_fps": effective_fps,
         "score_min": float(prediction.traversability_score.min()),
         "score_max": float(prediction.traversability_score.max()),
         "score_mean": float(prediction.traversability_score.mean()),
         "score_std": float(prediction.traversability_score.std()),
-        "prediction_valid": not stale,
-        "shadow_state": "STALE_FRAME" if stale else "CLEAR",
+        "prediction_valid": not frame_stale,
+        "telemetry_valid": not telemetry_stale,
+        "shadow_state": shadow_state,
         "checkpoint_sha256": checkpoint_sha256,
         "telemetry": telemetry_record(telemetry),
-        "sdk_read_endpoints": ["/v2/front", "/front", "/data"],
+        "sdk_allowed_read_endpoints": ["/v2/front", "/front", "/data"],
         "command_transmitted": False,
     }
     dashboard = compose_shadow_dashboard(
@@ -209,6 +239,7 @@ def compose_shadow_dashboard(
         canvas,
         (
             f"local_age={float(record['local_frame_age_sec']):.3f}s  "
+            f"telemetry_age={record['telemetry_age_sec']}  "
             f"sdk_ts={record['sdk_frame_timestamp']}  "
             f"score min/mean/max={float(record['score_min']):.3f}/"
             f"{float(record['score_mean']):.3f}/{float(record['score_max']):.3f}"
@@ -251,18 +282,19 @@ def write_shadow_summary(
         "processed_frame_count": len(records),
         "failed_frame_count": len(failures),
         "failures": failures,
-        "stale_frame_count": sum(
-            item["shadow_state"] == "STALE_FRAME" for item in records
+        "stale_frame_count": sum(not bool(item["prediction_valid"]) for item in records),
+        "stale_telemetry_count": sum(
+            not bool(item["telemetry_valid"]) for item in records
         ),
         "end_to_end_latency_ms": _latency(values),
         "inference_latency_ms": _latency(inference),
         "effective_fps": records[-1]["effective_fps"] if records else 0.0,
         "checkpoint_path": str(Path(checkpoint_path).expanduser().resolve()),
         "checkpoint_sha256": checkpoint_sha256,
-        "sdk_read_endpoints": ["/v2/front", "/front", "/data"],
+        "sdk_allowed_read_endpoints": ["/v2/front", "/front", "/data"],
         "sdk_write_endpoints": [],
         "command_transmitted": False,
-        "live_motion_performed": False,
+        "live_motion_command_sent_by_process": False,
     }
     path = output / "shadow_summary.json"
     path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
