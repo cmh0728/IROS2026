@@ -54,6 +54,8 @@ def test_dashboard_is_available_without_active_mission(monkeypatch) -> None:
     assert dashboard.status_code == 200
     assert "Start Mission" in dashboard.text
     assert "Mission API Results" in dashboard.text
+    assert 'href="/"' in dashboard.text
+    assert 'href="/sdk"' not in dashboard.text
 
 
 def test_configured_inactive_mission_does_not_poll_camera(monkeypatch) -> None:
