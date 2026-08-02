@@ -857,13 +857,13 @@ This {sample_count}-image bundle is for manual pixel annotation. It is not a tra
 
 Paved preference belongs in a later planner cost. Do not change a traversable unpaved pixel to `OBSTACLE` merely to prefer pavement.
 
-## CVAT workflow on Mac
+## CVAT workflow on Dell
 
 CVAT is used because its standard `Segmentation Mask 1.1` format directly exports pixel masks and a label map; Label Studio would require additional JSON/RLE conversion. Create a CVAT task with the files in `images/` and labels from `cvat_labelmap.txt` in exact ID order. Annotate from scratch, or import `cvat_seed_annotations.zip` as `Segmentation Mask 1.1` after the images are attached.
 
 The seed masks are unverified conversions of the old 3-class pseudo-labels: old non-traversable becomes `OBSTACLE`, old traversable becomes `ON_ROAD`, and old unknown becomes `IGNORE`. They never seed `OFF_ROAD` and must be corrected completely. Scene categories in metadata are also unverified sampling hints.
 
-Export annotations from CVAT as `Segmentation Mask 1.1` without source images. Return the ZIP to Dell. On Dell, import it with `training/import_cvat_traversability_masks.py`, then run `training/validate_traversability_dataset_v1.py`. Do not train or expand the dataset before human review and explicit approval.
+Export annotations from CVAT as `Segmentation Mask 1.1` without source images. Save the ZIP under the Dell dataset directory, import it with `training/import_cvat_traversability_masks.py`, then run `training/validate_traversability_dataset_v1.py`. Do not train or expand the dataset before human review and explicit approval.
 """
     (root / "README.md").write_text(text, encoding="utf-8")
 

@@ -513,7 +513,7 @@ class H264VideoWriter:
         )
         stream = json.loads(probe.stdout)["streams"][0]
         if stream.get("codec_name") != "h264" or stream.get("pix_fmt") != "yuv420p":
-            raise OSError(f"output is not QuickTime-compatible H.264 yuv420p: {stream}")
+            raise OSError(f"output is not H.264 with yuv420p pixel format: {stream}")
         return {
             "codec": stream["codec_name"],
             "pixel_format": stream["pix_fmt"],

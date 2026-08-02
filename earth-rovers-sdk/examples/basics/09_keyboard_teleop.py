@@ -25,7 +25,7 @@ try:
 except ImportError:
     print("This example requires the 'keyboard' library.")
     print("Install with: pip install keyboard")
-    print("\nNote: On macOS/Linux, you may need to run with sudo.")
+    print("\nNote: On Ubuntu, you may need elevated input-device permissions.")
     sys.exit(1)
 
 BASE_URL = "http://localhost:8000"

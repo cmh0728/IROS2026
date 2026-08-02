@@ -19,7 +19,7 @@ else
 fi
 for command_name in ffmpeg ffprobe; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
-        echo "ERROR: $command_name is required for QuickTime-compatible H.264 output." >&2
+        echo "ERROR: $command_name is required for H.264/yuv420p output." >&2
         exit 1
     fi
 done

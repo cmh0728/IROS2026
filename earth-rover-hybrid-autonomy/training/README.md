@@ -111,15 +111,7 @@ Then build the 40-frame, eight-ride default review bundle:
 ./scripts/run_traversability_pilot.sh
 ```
 
-Paths can be overridden with `DATASET_ROOT`, `MANIFEST_PATH`, `BUNDLE_ROOT`, `SAMPLE_COUNT`, `MAX_RIDES`, `MINIMUM_SEPARATION_SECONDS`, and `SEED`. The default bundle is `$HOME/datasets/review_bundles/traversability_pilot_v1/`. Open `gallery.html` on the Mac and edit reviewer columns in `review.csv`. Do not train until the reviewed CSV and any corrected masks pass `training/validate_traversability_review.py` and the user explicitly approves them.
-
-Copy the self-contained bundle by running this on the Mac, replacing both placeholders:
-
-```bash
-rsync -ah --progress \
-  <DELL_USER>@<DELL_TAILSCALE_IP>:~/datasets/review_bundles/traversability_pilot_v1/ \
-  <MAC_DESTINATION>/traversability_pilot_v1/
-```
+Paths can be overridden with `DATASET_ROOT`, `MANIFEST_PATH`, `BUNDLE_ROOT`, `SAMPLE_COUNT`, `MAX_RIDES`, `MINIMUM_SEPARATION_SECONDS`, and `SEED`. The default bundle is `$HOME/datasets/review_bundles/traversability_pilot_v1/`. Open `gallery.html` on Dell and edit reviewer columns in `review.csv`. Do not train until the reviewed CSV and any corrected masks pass `training/validate_traversability_review.py` and the user explicitly approves them.
 
 ## Traversability Dataset v1 Annotation Pilot
 
@@ -199,7 +191,7 @@ Only after this should we build the real PyTorch `Dataset`.
 ## SAM-TP Phase 1 Video Gate
 
 Run `scripts/run_sam_tp_phase1_video_review.sh` on Dell to create a
-QuickTime-compatible deterministic review video. A display-only path starts
+deterministic H.264/yuv420p review video. A display-only path starts
 near the bottom of the image and is drawn only when a connected corridor stays
 above the configured SAM-TP score threshold. The fourth panel separately shows
 the seven fixed rover-frame candidates. The image-space path is not a metric

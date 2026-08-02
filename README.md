@@ -31,13 +31,9 @@ IROS2026/
 ## 개발 환경
 
 ```text
-MacBook
-  코드 작성, Git, 문서 검토
-       |
-       | GitHub + SSH
-       v
 Dell Ubuntu 22.04 / RTX 4070
-  dataset 처리, 테스트, CUDA 추론, 학습
+  코드 작성, Git, 테스트, SDK dashboard
+  dataset 처리, CUDA 추론, 학습, replay
        |
        v
 NAS 또는 Dell 로컬 저장소
@@ -62,7 +58,7 @@ cd earth-rover-hybrid-autonomy
 python3 -m pip install -r requirements.txt
 ```
 
-Linux x86_64에서는 `requirements.txt`가 확인된 CUDA 11.8용 PyTorch wheel과 SegFormer runtime을 설치합니다. Mac에서는 CUDA PyTorch 항목이 environment marker에 의해 제외됩니다. H.264 검수 영상 생성에는 시스템 `ffmpeg`가 필요합니다.
+Dell Ubuntu 22.04 x86_64에서는 `requirements.txt`가 확인된 CUDA 11.8용 PyTorch wheel과 SegFormer runtime을 설치합니다. H.264 검수 영상 생성에는 시스템 `ffmpeg`와 `libx264` encoder가 필요합니다.
 
 ```bash
 sudo apt update
@@ -159,7 +155,7 @@ ride_<ID>_*/
 
 ### v2 모델로 연속 영상 검사
 
-Dell에서 다음 스크립트를 실행하면 dataset마다 서로 다른 ride 5개와 ride당 60초 구간을 deterministic하게 선택합니다. 결과는 original, overlay, prediction mask로 구성된 QuickTime 호환 H.264 영상입니다.
+Dell에서 다음 스크립트를 실행하면 dataset마다 서로 다른 ride 5개와 ride당 60초 구간을 deterministic하게 선택합니다. 결과는 original, overlay, prediction mask로 구성된 H.264/yuv420p 영상입니다.
 
 ```bash
 cd earth-rover-hybrid-autonomy

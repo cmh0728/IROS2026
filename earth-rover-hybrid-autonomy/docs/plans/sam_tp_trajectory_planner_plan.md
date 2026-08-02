@@ -412,8 +412,8 @@ Input modes:
   `gps_valid=false`;
 - `RunLogger.timeline.csv` replay with recorded GPS/heading/waypoint.
 
-Reuse deterministic HLS selection, `ExistingHlsDecoder`, H.264 writer,
-QuickTime-compatible settings, timestamp handling, and overwrite protection.
+Reuse deterministic HLS selection, `ExistingHlsDecoder`, H.264/yuv420p writer
+settings, timestamp handling, and overwrite protection.
 
 The video displays:
 

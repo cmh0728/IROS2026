@@ -12,9 +12,9 @@ transformers==5.4.0
 safetensors==0.7.0
 Pillow==11.3.0
 
-# Keep Mac development lightweight; provision CUDA training only on Ubuntu/Linux x86_64.
+# Dell Ubuntu 22.04 x86_64 CUDA runtime.
 --extra-index-url https://download.pytorch.org/whl/cu118
-torch==2.7.1+cu118; sys_platform == "linux" and platform_machine == "x86_64"
-torchvision==0.22.1+cu118; sys_platform == "linux" and platform_machine == "x86_64"
+torch==2.7.1+cu118
+torchvision==0.22.1+cu118
 
-# System dependency for QuickTime-compatible review videos: ffmpeg with libx264.
+# System dependency for portable H.264/yuv420p review videos: ffmpeg with libx264.

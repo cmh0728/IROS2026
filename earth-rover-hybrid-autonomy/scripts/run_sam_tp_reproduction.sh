@@ -65,7 +65,7 @@ fi
 export SAM_TP_ENVIRONMENT_BACKEND="$ENV_BACKEND"
 for command_name in ffmpeg ffprobe; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
-    echo "ERROR: $command_name is required for the QuickTime review video." >&2
+    echo "ERROR: $command_name is required for the H.264 review video." >&2
     exit 2
   fi
 done

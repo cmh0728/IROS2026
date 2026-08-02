@@ -33,7 +33,7 @@ async def _generate_gemini(text: str, output_path: str) -> str:
         raise RuntimeError(
             "Gemini TTS requires google-genai, but it conflicts with pyppeteer's "
             "websockets dependency in this SDK. Use TTS_PROVIDER=edge for the "
-            "standard macOS setup."
+            "standard SDK setup."
         ) from exc
 
     api_key = os.getenv("TTS_API_KEY")

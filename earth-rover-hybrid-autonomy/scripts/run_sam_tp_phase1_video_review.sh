@@ -52,7 +52,7 @@ echo "[2/3] Strictly validating the official checkpoint"
   --checkpoint "$CHECKPOINT" \
   --output "$REPORT_DIR/compatibility_report.json"
 
-echo "[3/3] Creating the deterministic QuickTime-compatible Phase 1 video"
+echo "[3/3] Creating the deterministic H.264/yuv420p Phase 1 video"
 "$PYTHON" training/run_sam_tp_video_review.py \
   --reproduction-config "$CONFIG" \
   --upstream-root "$UPSTREAM_ROOT" \

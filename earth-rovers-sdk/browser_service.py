@@ -50,10 +50,6 @@ def resolve_chrome_executable() -> str:
         if detected_path:
             return detected_path
 
-    macos_path = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-    if macos_path.is_file() and os.access(macos_path, os.X_OK):
-        return str(macos_path)
-
     raise BrowserConfigurationError(
         "Chrome/Chromium was not found. Set CHROME_EXECUTABLE_PATH to an "
         "executable returned by 'command -v google-chrome-stable', "

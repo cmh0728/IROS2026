@@ -41,7 +41,7 @@ DATASET_DEFAULTS = {
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run offline SegFormer-B0 v2 inference and create QuickTime review videos."
+        description="Run offline SegFormer-B0 v2 inference and create H.264 review videos."
     )
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--config", required=True)

@@ -127,7 +127,7 @@ def test_synthetic_pipeline_frame_renders_three_aspect_preserved_panels() -> Non
     assert result.record["command_transmitted"] is False
 
 
-def test_h264_writer_produces_quicktime_compatible_video(tmp_path: Path) -> None:
+def test_h264_writer_produces_h264_yuv420p_video(tmp_path: Path) -> None:
     if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
         pytest.skip("ffmpeg and ffprobe are unavailable")
     encoders = subprocess.run(

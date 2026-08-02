@@ -113,7 +113,7 @@ Outputs:
 
 - Compatibility and benchmark:
   `~/datasets/experiments/sam_tp_reproduction/<RUN_ID>/`
-- QuickTime H.264 review:
+- H.264/yuv420p review:
   `~/datasets/review_bundles/sam_tp_reproduction/<RUN_ID>/`
 - Strict config/checkpoint report: `compatibility_report.json`
 - Single-image logits and score: `single_image/{raw_logits,traversability_score}.npy`

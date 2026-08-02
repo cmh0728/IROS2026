@@ -51,7 +51,7 @@ reports above.
   `~/datasets/review_bundles/traversability_video_review_v2/review_manifest.json`.
 
 The generated reports and checkpoint are intentionally outside Git and were not
-available on this Mac during the freeze commit. Consequently, best epoch,
+available in the tracked checkout during the freeze commit. Consequently, best epoch,
 checkpoint SHA-256, test mIoU, new-holdout mIoU, regression status, latency, and
 video statistics are recorded as **unverified in this checkout**. Read those
 values directly from the files above; do not copy values from conversation

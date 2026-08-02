@@ -41,6 +41,17 @@ def test_resolve_chrome_executable_detects_linux_browser(monkeypatch) -> None:
     assert browser_service.resolve_chrome_executable() == "/usr/bin/chromium"
 
 
+def test_resolve_chrome_executable_rejects_missing_linux_browser(monkeypatch) -> None:
+    monkeypatch.delenv("CHROME_EXECUTABLE_PATH", raising=False)
+    monkeypatch.setattr(browser_service.shutil, "which", lambda _name: None)
+
+    with pytest.raises(
+        browser_service.BrowserConfigurationError,
+        match="Chrome/Chromium was not found",
+    ):
+        browser_service.resolve_chrome_executable()
+
+
 def test_concurrent_initialization_launches_browser_once(monkeypatch) -> None:
     launch_calls = []
 

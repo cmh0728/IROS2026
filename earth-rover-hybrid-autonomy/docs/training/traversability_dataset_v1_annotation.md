@@ -27,15 +27,7 @@ The completed 40-frame pseudo-label bundle is a read-only candidate pool. Build 
 
 The default output is `$HOME/datasets/generated/traversability_dataset_v1/pilot_20/`. Override `SOURCE_BUNDLE`, `OUTPUT_DIR`, `MINIMUM_SEPARATION_SECONDS`, or `SEED` only when needed. Generated images and masks remain outside Git.
 
-Copy the portable pilot from Dell to Mac using the macOS-compatible progress option:
-
-```bash
-rsync -ah --progress \
-  <DELL_USER>@<DELL_TAILSCALE_IP>:~/datasets/generated/traversability_dataset_v1/pilot_20/ \
-  "$HOME/Desktop/traversability_dataset_v1_pilot_20/"
-```
-
-## Mac: Annotate in CVAT
+## Dell: Annotate in CVAT
 
 CVAT is selected because its standard [`Segmentation Mask 1.1`](https://docs.cvat.ai/docs/manual/advanced/formats/format-smask/) format directly imports and exports pixel masks. Label Studio would require an additional JSON/RLE conversion path. The generated seed archive contains the standard `labelmap.txt`, `ImageSets/Segmentation/default.txt`, `SegmentationClass/`, and `SegmentationObject/` entries.
 
@@ -43,14 +35,7 @@ CVAT is selected because its standard [`Segmentation Mask 1.1`](https://docs.cva
 2. Define `IGNORE`, `ON_ROAD`, `OFF_ROAD`, and `OBSTACLE` in the exact order and colors shown in `cvat_labelmap.txt`.
 3. Annotate from scratch, or import `cvat_seed_annotations.zip` as `Segmentation Mask 1.1`.
 4. Treat every seed pixel as unverified. The seed never distinguishes `OFF_ROAD` and must be corrected manually.
-5. Export `Segmentation Mask 1.1` without source images and copy the ZIP back to Dell.
-
-```bash
-scp <MAC_CVAT_EXPORT_ZIP> \
-  <DELL_USER>@<DELL_TAILSCALE_IP>:~/datasets/generated/traversability_dataset_v1/cvat_export.zip
-```
-
-The Mac is for labeling only. Do not run dataset processing, validation, inference, or training there.
+5. Export `Segmentation Mask 1.1` without source images and save the ZIP under the Dell dataset directory used by the importer.
 
 ## Dell: Import and Validate
 
@@ -79,7 +64,7 @@ python3 training/validate_traversability_dataset_v1.py \
 
 The validator rejects missing or extra masks, duplicate sample IDs, filename mismatches, dimension mismatches, multi-channel final masks, and IDs outside `0..3`. It reports per-image and overall class distributions plus all-IGNORE and single-class warnings. Stop after validation and review `overlay_contact_sheet.jpg` or `review.html` before expanding the dataset or training a model.
 
-Reviewed outputs are written under `pilot_20/reviewed_import/`: normalized masks in `masks/`, colored mask previews in `mask_visualizations/`, overlays in `overlays/`, per-image statistics in `per_image_statistics.csv`, and the full validator result in `validation_report.json`. Copy `overlay_contact_sheet.jpg` to the Mac for the final human gate; do not train after an automated PASS alone.
+Reviewed outputs are written under `pilot_20/reviewed_import/`: normalized masks in `masks/`, colored mask previews in `mask_visualizations/`, overlays in `overlays/`, per-image statistics in `per_image_statistics.csv`, and the full validator result in `validation_report.json`. Review `overlay_contact_sheet.jpg` on Dell for the final human gate; do not train after an automated PASS alone.
 
 ## Approved 100-Image Expansion
 
