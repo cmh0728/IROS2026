@@ -2,6 +2,8 @@
 
 const state = {
   missionActive: false,
+  missionConfigured: false,
+  cameraAndTelemetryAllowed: false,
   missionRequestRunning: false,
   telemetryTimer: null,
   cameraTimer: null,
@@ -63,14 +65,17 @@ function setConnection(online) {
   elements.connection.className = `status ${online ? "status-online" : "status-offline"}`;
 }
 
-function setMissionControls(active) {
+function setMissionControls(active, configured = state.missionConfigured) {
   state.missionActive = active;
-  elements.start.disabled = active || state.missionRequestRunning;
-  elements.end.disabled = !active || state.missionRequestRunning;
+  state.missionConfigured = configured;
+  elements.start.disabled = !configured || active || state.missionRequestRunning;
+  elements.end.disabled = !configured || !active || state.missionRequestRunning;
   elements.refresh.disabled = state.missionRequestRunning;
-  elements.missionState.textContent = active ? "ACTIVE" : "INACTIVE";
-  elements.missionState.style.color = active ? "#8cdda9" : "#ffaaa3";
-  if (!active) {
+  elements.missionState.textContent = configured
+    ? (active ? "ACTIVE" : "INACTIVE")
+    : "DIRECT BOT MODE";
+  elements.missionState.style.color = active || !configured ? "#8cdda9" : "#ffaaa3";
+  if (!state.cameraAndTelemetryAllowed) {
     stopMissionPolling();
     elements.camera.style.display = "none";
     elements.cameraPlaceholder.style.display = "grid";
@@ -83,12 +88,17 @@ function setMissionControls(active) {
 
 function renderMissionStatus(status) {
   setConnection(true);
-  setMissionControls(Boolean(status.mission_active));
+  state.cameraAndTelemetryAllowed = Boolean(status.camera_and_telemetry_allowed);
+  setMissionControls(
+    Boolean(status.mission_active),
+    Boolean(status.mission_configured),
+  );
   elements.missionDetail.textContent = status.mission_configured
     ? `${status.checkpoint_count} checkpoints loaded`
-    : "MISSION_SLUG is not configured";
-  elements.checkpointSummary.textContent =
-    `count ${status.checkpoint_count} | latest ${status.latest_scanned_checkpoint ?? "-"}`;
+    : "No mission tracking; direct camera and telemetry test mode";
+  elements.checkpointSummary.textContent = status.mission_configured
+    ? `count ${status.checkpoint_count} | latest ${status.latest_scanned_checkpoint ?? "-"}`
+    : "Not used in direct bot mode";
 }
 
 async function refreshStatus(logResult = false) {
@@ -138,7 +148,7 @@ function renderCheckpoints(payload) {
 
 async function refreshMission(logResult = true) {
   const status = await refreshStatus(logResult);
-  if (!status?.mission_active) {
+  if (!status?.mission_configured || !status?.mission_active) {
     return;
   }
   try {
@@ -157,7 +167,7 @@ async function runMissionAction(label, path) {
     return;
   }
   state.missionRequestRunning = true;
-  setMissionControls(state.missionActive);
+  setMissionControls(state.missionActive, state.missionConfigured);
   try {
     const result = await requestJson(path, { method: "POST" });
     appendLog(`${label} ${path}`, result);
@@ -174,7 +184,7 @@ function valueOrDash(value) {
 }
 
 async function pollTelemetry() {
-  if (!state.missionActive || state.telemetryRequestRunning) {
+  if (!state.cameraAndTelemetryAllowed || state.telemetryRequestRunning) {
     return;
   }
   state.telemetryRequestRunning = true;
@@ -199,7 +209,7 @@ async function pollTelemetry() {
 }
 
 async function pollCamera() {
-  if (!state.missionActive || state.cameraRequestRunning) {
+  if (!state.cameraAndTelemetryAllowed || state.cameraRequestRunning) {
     return;
   }
   state.cameraRequestRunning = true;

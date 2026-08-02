@@ -571,4 +571,10 @@ screen. The dashboard can be opened before a mission starts.
 - `End Mission` requires browser confirmation and calls `POST /end-mission`.
 - The dashboard does not call `/control` or send movement commands.
 
+When `MISSION_SLUG` is absent, the dashboard enters `DIRECT BOT MODE`. In this
+mode it disables `Start Mission` and `End Mission` because the official SDK does
+not require those endpoints for basic bot testing. Camera and telemetry polling
+start directly. When `MISSION_SLUG` is configured, the dashboard uses the
+mission start/end workflow and checkpoint tracking.
+
 The existing RTC page remains available at `/sdk` after a mission starts.

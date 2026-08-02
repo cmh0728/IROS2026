@@ -96,12 +96,18 @@ browser_service = BrowserService()
 
 
 def mission_status_payload():
+    mission_configured = bool(os.getenv("MISSION_SLUG"))
     checkpoints = checkpoints_list_data.get("checkpoints_list", [])
     if not isinstance(checkpoints, list):
         checkpoints = []
     return {
-        "mission_configured": bool(os.getenv("MISSION_SLUG")),
+        "mission_configured": mission_configured,
         "mission_active": bool(auth_response_data),
+        "operation_mode": "mission" if mission_configured else "direct_bot",
+        "start_mission_required": mission_configured,
+        "camera_and_telemetry_allowed": (
+            bool(auth_response_data) if mission_configured else True
+        ),
         "checkpoint_count": len(checkpoints),
         "latest_scanned_checkpoint": checkpoints_list_data.get(
             "latest_scanned_checkpoint"

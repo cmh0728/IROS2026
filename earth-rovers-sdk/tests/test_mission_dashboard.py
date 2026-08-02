@@ -25,6 +25,9 @@ def test_mission_status_does_not_expose_identifiers(monkeypatch) -> None:
 
     assert payload["mission_configured"] is True
     assert payload["mission_active"] is True
+    assert payload["operation_mode"] == "mission"
+    assert payload["start_mission_required"] is True
+    assert payload["camera_and_telemetry_allowed"] is True
     assert payload["checkpoint_count"] == 1
     assert payload["latest_scanned_checkpoint"] == 0
     serialized = str(payload)
@@ -34,6 +37,7 @@ def test_mission_status_does_not_expose_identifiers(monkeypatch) -> None:
 
 
 def test_dashboard_is_available_without_active_mission(monkeypatch) -> None:
+    monkeypatch.delenv("MISSION_SLUG", raising=False)
     monkeypatch.setattr(main, "auth_response_data", {})
     monkeypatch.setattr(main, "checkpoints_list_data", {})
     client = TestClient(main.app)
@@ -43,9 +47,23 @@ def test_dashboard_is_available_without_active_mission(monkeypatch) -> None:
 
     assert status.status_code == 200
     assert status.json()["mission_active"] is False
+    assert status.json()["operation_mode"] == "direct_bot"
+    assert status.json()["start_mission_required"] is False
+    assert status.json()["camera_and_telemetry_allowed"] is True
     assert dashboard.status_code == 200
     assert "Start Mission" in dashboard.text
     assert "Mission API Results" in dashboard.text
+
+
+def test_configured_inactive_mission_does_not_poll_camera(monkeypatch) -> None:
+    monkeypatch.setenv("MISSION_SLUG", "mission")
+    monkeypatch.setattr(main, "auth_response_data", {})
+
+    payload = main.mission_status_payload()
+
+    assert payload["operation_mode"] == "mission"
+    assert payload["mission_active"] is False
+    assert payload["camera_and_telemetry_allowed"] is False
 
 
 def test_dashboard_javascript_has_no_control_endpoint() -> None:
