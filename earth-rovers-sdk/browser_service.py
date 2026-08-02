@@ -1,3 +1,4 @@
+import asyncio
 import os
 import shutil
 import time
@@ -20,7 +21,11 @@ if QUALITY < 0 or QUALITY > 1:
     raise ValueError("Invalid image quality. Quality should be between 0 and 1")
 
 
-class BrowserConfigurationError(RuntimeError):
+class BrowserServiceError(RuntimeError):
+    """Raised when the browser-backed SDK bridge is unavailable."""
+
+
+class BrowserConfigurationError(BrowserServiceError):
     """Raised when no usable Chrome or Chromium executable is configured."""
 
 
@@ -60,15 +65,27 @@ class BrowserService:
     def __init__(self):
         self.browser = None
         self.page = None
+        self._initialization_lock = asyncio.Lock()
         self.default_viewport = {"width": 3840, "height": 2160}
 
     async def initialize_browser(self):
-        if not self.browser:
+        if self.browser and self.page:
+            return
+
+        async with self._initialization_lock:
+            if self.browser and self.page:
+                return
+
+            executable_path = resolve_chrome_executable()
             try:
-                executable_path = resolve_chrome_executable()
                 self.browser = await launch(
                     executablePath=executable_path,
                     headless=True,
+                    handleSIGINT=False,
+                    handleSIGTERM=False,
+                    handleSIGHUP=False,
+                    autoClose=False,
+                    dumpio=os.getenv("BROWSER_DUMPIO", "false").lower() == "true",
                     args=[
                         "--ignore-certificate-errors",
                         "--no-sandbox",
@@ -99,12 +116,15 @@ class BrowserService:
                     }});
                 }}"""
                 await self.page.evaluate(call)
-            except Exception as e:
-                print(f"Error initializing browser: {e}")
-                self.browser = None
-                self.page = None
+            except BrowserServiceError:
                 await self.close_browser()
                 raise
+            except Exception as exc:
+                await self.close_browser()
+                raise BrowserServiceError(
+                    "Chrome failed to start or initialize. Set BROWSER_DUMPIO=true "
+                    "to expose the Chrome process error, then restart the SDK."
+                ) from exc
 
     async def take_screenshot(self, video_output_folder: str, elements: list):
         await self.initialize_browser()
@@ -205,6 +225,8 @@ class BrowserService:
 
     async def close_browser(self):
         if self.browser:
-            await self.browser.close()
-            self.browser = None
-            self.page = None
+            try:
+                await self.browser.close()
+            finally:
+                self.browser = None
+                self.page = None

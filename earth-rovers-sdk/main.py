@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Literal
 
-from browser_service import BrowserConfigurationError, BrowserService
+from browser_service import BrowserService, BrowserServiceError
 from rtm_client import RtmClient
 from tts_service import generate_speech
 
@@ -28,11 +28,16 @@ logger = logging.getLogger("http_logger")
 app = FastAPI()
 
 
-@app.exception_handler(BrowserConfigurationError)
-async def browser_configuration_error_handler(
-    _request: Request, exc: BrowserConfigurationError
+@app.exception_handler(BrowserServiceError)
+async def browser_service_error_handler(
+    _request: Request, exc: BrowserServiceError
 ):
     return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+@app.on_event("shutdown")
+async def close_browser_service() -> None:
+    await browser_service.close_browser()
 
 
 # Middleware
