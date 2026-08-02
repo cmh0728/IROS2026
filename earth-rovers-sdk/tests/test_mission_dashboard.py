@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 import main
+from browser_service import BrowserConfigurationError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,3 +76,17 @@ def test_dashboard_javascript_has_no_control_endpoint() -> None:
     assert '"/end-mission"' in source
     assert '"/control"' not in source
     assert "send_control" not in source
+
+
+def test_browser_configuration_failure_returns_service_unavailable(monkeypatch) -> None:
+    async def fail_data():
+        raise BrowserConfigurationError("invalid Chrome path")
+
+    monkeypatch.delenv("MISSION_SLUG", raising=False)
+    monkeypatch.setattr(main.browser_service, "data", fail_data)
+    client = TestClient(main.app)
+
+    response = client.get("/data")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "invalid Chrome path"}

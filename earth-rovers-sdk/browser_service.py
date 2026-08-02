@@ -1,5 +1,8 @@
 import os
+import shutil
 import time
+from pathlib import Path
+
 from pyppeteer import launch
 from dotenv import load_dotenv
 
@@ -17,6 +20,42 @@ if QUALITY < 0 or QUALITY > 1:
     raise ValueError("Invalid image quality. Quality should be between 0 and 1")
 
 
+class BrowserConfigurationError(RuntimeError):
+    """Raised when no usable Chrome or Chromium executable is configured."""
+
+
+def resolve_chrome_executable() -> str:
+    configured_path = os.getenv("CHROME_EXECUTABLE_PATH", "").strip()
+    if configured_path:
+        path = Path(configured_path).expanduser()
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+        raise BrowserConfigurationError(
+            "CHROME_EXECUTABLE_PATH is not an executable file: "
+            f"{configured_path}"
+        )
+
+    for executable in (
+        "google-chrome-stable",
+        "google-chrome",
+        "chromium",
+        "chromium-browser",
+    ):
+        detected_path = shutil.which(executable)
+        if detected_path:
+            return detected_path
+
+    macos_path = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+    if macos_path.is_file() and os.access(macos_path, os.X_OK):
+        return str(macos_path)
+
+    raise BrowserConfigurationError(
+        "Chrome/Chromium was not found. Set CHROME_EXECUTABLE_PATH to an "
+        "executable returned by 'command -v google-chrome-stable', "
+        "'command -v google-chrome', or 'command -v chromium'."
+    )
+
+
 class BrowserService:
     def __init__(self):
         self.browser = None
@@ -26,10 +65,7 @@ class BrowserService:
     async def initialize_browser(self):
         if not self.browser:
             try:
-                executable_path = os.getenv(
-                    "CHROME_EXECUTABLE_PATH",
-                    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-                )
+                executable_path = resolve_chrome_executable()
                 self.browser = await launch(
                     executablePath=executable_path,
                     headless=True,
